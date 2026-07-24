@@ -1,6 +1,7 @@
 import { OrbitControls } from '@react-three/drei'
 import { Canvas, useFrame } from '@react-three/fiber'
 import { FloorMesh } from './building/FloorMesh'
+import { PlayerCharacter } from './character/PlayerCharacter'
 import { useWorld } from './useWorld'
 
 /** Гоняет симуляцию в такт кадрам. Ничего не рисует. */
@@ -12,7 +13,12 @@ function SimulationLoop() {
 
 function Scene({ onSelectProp }: { onSelectProp: (propId: string) => void }) {
   const world = useWorld()
-  return <FloorMesh plan={world.plan} catalog={world.catalog} onSelectProp={onSelectProp} />
+  return (
+    <>
+      <FloorMesh plan={world.plan} catalog={world.catalog} onSelectProp={onSelectProp} />
+      <PlayerCharacter />
+    </>
+  )
 }
 
 export function GameCanvas({ onSelectProp }: { onSelectProp: (propId: string) => void }) {
