@@ -2,6 +2,7 @@ import { OrbitControls } from '@react-three/drei'
 import { Canvas, useFrame } from '@react-three/fiber'
 import { FloorMesh } from './building/FloorMesh'
 import { PlayerCharacter } from './character/PlayerCharacter'
+import { ClickToMove } from './input/ClickToMove'
 import { useWorld } from './useWorld'
 
 /** Гоняет симуляцию в такт кадрам. Ничего не рисует. */
@@ -16,6 +17,7 @@ function Scene({ onSelectProp }: { onSelectProp: (propId: string) => void }) {
   return (
     <>
       <FloorMesh plan={world.plan} catalog={world.catalog} onSelectProp={onSelectProp} />
+      <ClickToMove />
       <PlayerCharacter />
     </>
   )
