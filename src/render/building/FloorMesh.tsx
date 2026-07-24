@@ -22,6 +22,26 @@ const WALL_COLOR = '#e6e1d6'
 const DOOR_COLOR = '#7a5c3a'
 
 /**
+ * Верх стены — это её срез, и он темнее боковой поверхности. Без этого
+ * срезанные перегородки сливаются в одно белёсое плато, по которому
+ * невозможно прочитать, где кончается одна стена и начинается другая.
+ */
+const WALL_TOP_COLOR = '#cdc3b1'
+
+/**
+ * Крышка стены — отдельная плоскость поверх бокса, только чтобы покрасить
+ * срез в свой цвет: у боксовой геометрии все шесть граней берут один
+ * материал.
+ *
+ * Крышка приподнята на миллиметр — иначе она совпадает с верхней гранью
+ * бокса и они начинают бороться за глубину, — и выпущена на два миллиметра
+ * за габарит, чтобы у соседних отрезков крышки перекрывались, а не сходились
+ * встык. На экране это доли пикселя, геометрия визуально не меняется.
+ */
+const CAP_LIFT = 0.001
+const CAP_OVERHANG = 0.004
+
+/**
  * До какой высоты срезаются стены, загораживающие обзор.
  * Не до нуля: перегородка по пояс оставляет комнаты комнатами,
  * но человек ростом 1.78 виден над ней целиком.
@@ -145,20 +165,25 @@ export function FloorMesh({
         const height = WALL_GROUP_HEIGHT[segment.key] ?? WALL_HEIGHT
         const spanX = segment.axis === 'x' ? segment.length : 1
         const spanZ = segment.axis === 'z' ? segment.length : 1
+        const x = (segment.col + spanX / 2) * size
+        const z = (segment.row + spanZ / 2) * size
         return (
-          <mesh
-            key={`w-${segment.axis}-${segment.col}-${segment.row}`}
-            position={[
-              (segment.col + spanX / 2) * size,
-              height / 2,
-              (segment.row + spanZ / 2) * size,
-            ]}
-            castShadow
-            receiveShadow
-          >
-            <boxGeometry args={[spanX * size, height, spanZ * size]} />
-            <meshStandardMaterial color={WALL_COLOR} roughness={0.95} />
-          </mesh>
+          <group key={`w-${segment.axis}-${segment.col}-${segment.row}`}>
+            <mesh position={[x, height / 2, z]} castShadow receiveShadow>
+              <boxGeometry args={[spanX * size, height, spanZ * size]} />
+              <meshStandardMaterial color={WALL_COLOR} roughness={0.95} />
+            </mesh>
+            <mesh
+              position={[x, height + CAP_LIFT, z]}
+              rotation={[-Math.PI / 2, 0, 0]}
+              receiveShadow
+            >
+              <planeGeometry
+                args={[spanX * size + CAP_OVERHANG, spanZ * size + CAP_OVERHANG]}
+              />
+              <meshStandardMaterial color={WALL_TOP_COLOR} roughness={0.95} />
+            </mesh>
+          </group>
         )
       })}
 

@@ -51,10 +51,20 @@ export function GameCanvas({ onSelectProp }: { onSelectProp: (propId: string) =>
       <SimulationLoop />
 
       <hemisphereLight intensity={0.55} groundColor="#2a2622" />
+      {/*
+        normalBias сдвигает точку, которой стена спрашивает карту теней,
+        вдоль её же нормали. Без сдвига стена затеняет сама себя по стыкам:
+        в карту теней three.js пишет задние грани, и внутренняя грань бокса
+        ложится ровно на поверхность соседнего — по каждому стыку и вдоль
+        основания стен шёл тонкий тёмный пунктир. Величина — примерно
+        полтора тексела карты, меньше не помогает, больше отрывает тени
+        от предметов.
+      */}
       <directionalLight
         position={[16, 24, 12]}
         intensity={1.5}
         castShadow
+        shadow-normalBias={0.04}
         shadow-mapSize={[2048, 2048]}
         shadow-camera-left={-30}
         shadow-camera-right={30}
