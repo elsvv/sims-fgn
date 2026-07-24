@@ -9,6 +9,8 @@ import {
 } from 'react'
 import { FLOOR_A2, FLOOR_A2_SPAWN } from '../content/floors/floorA2'
 import { PROP_CATALOG } from '../content/props/propCatalog'
+import { STUDY_CONFIG } from '../content/study/courses'
+import { StudyState } from '../sim/study/StudyState'
 import { World, type WorldSnapshot } from '../sim/World'
 
 const WorldContext = createContext<World | null>(null)
@@ -22,7 +24,12 @@ const SNAPSHOT_INTERVAL_MS = 100
  */
 export function WorldProvider({ children }: { children: ReactNode }) {
   const worldRef = useRef<World | null>(null)
-  worldRef.current ??= new World(FLOOR_A2, FLOOR_A2_SPAWN, PROP_CATALOG)
+  worldRef.current ??= new World(
+    FLOOR_A2,
+    FLOOR_A2_SPAWN,
+    PROP_CATALOG,
+    new StudyState(STUDY_CONFIG),
+  )
   return createElement(WorldContext.Provider, { value: worldRef.current }, children)
 }
 

@@ -18,6 +18,64 @@
 
 .hud__needs { left: 16px; bottom: 16px; width: 230px; }
 .hud__time { right: 16px; top: 16px; text-align: right; }
+.hud__schedule { left: 16px; top: 16px; width: 250px; }
+
+.hud__panel-title {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  opacity: 0.65;
+  margin-bottom: 8px;
+}
+
+.lesson {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 8px;
+  margin: 0 -8px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.lesson[data-current='true'] {
+  background: rgba(61, 108, 224, 0.28);
+  box-shadow: inset 2px 0 0 #5c85ea;
+}
+
+.lesson__time { opacity: 0.6; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.lesson__body { flex: 1; min-width: 0; }
+
+.lesson__course {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lesson__room { font-size: 11px; opacity: 0.55; }
+.lesson__empty { font-size: 12px; opacity: 0.55; }
+
+.lesson__mark {
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  white-space: nowrap;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.lesson__mark--present { color: #8fd6a1; }
+.lesson__mark--late { color: #e5c273; }
+.lesson__mark--absent { color: #e58a83; }
+
+.hud__where {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.hud__next { margin-top: 3px; font-size: 11px; opacity: 0.55; }
 
 .need { margin-bottom: 8px; }
 .need:last-child { margin-bottom: 0; }

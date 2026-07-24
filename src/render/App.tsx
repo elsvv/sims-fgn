@@ -3,6 +3,7 @@ import { GameCanvas } from './GameCanvas'
 import './ui/hud.css'
 import { InteractionMenu } from './ui/InteractionMenu'
 import { NeedsPanel } from './ui/NeedsPanel'
+import { SchedulePanel } from './ui/SchedulePanel'
 import { TimeControls } from './ui/TimeControls'
 import { useWorldSnapshot, WorldProvider } from './useWorld'
 
@@ -22,6 +23,7 @@ function Hud({
   return (
     <div className="hud">
       <TimeControls />
+      <SchedulePanel />
       <NeedsPanel />
       <ActivityLabel />
       <InteractionMenu propId={selectedProp} onClose={onCloseMenu} />

@@ -156,6 +156,14 @@ test('сцена этажа рисуется, интерфейс на месте
   await expect(needs.getByText('Энергия', { exact: true })).toBeVisible()
   await expect(needs.getByText('Спокойствие', { exact: true })).toBeVisible()
 
+  // Расписание связано с миром: панель знает и про пары, и про то,
+  // в каком помещении стоит персонаж.
+  const schedule = page.locator('.hud__schedule')
+  await expect(schedule.getByText('Расписание на сегодня')).toBeVisible()
+  await expect(schedule.locator('.lesson')).toHaveCount(2)
+  await expect(schedule.locator('.lesson__room').first()).toHaveText('А-204')
+  await expect(schedule.locator('.hud__where')).toHaveText('Сейчас: коридор')
+
   const speedButtons = page.locator('.speed-buttons button')
   await expect(speedButtons).toHaveCount(4)
   await expect(speedButtons.nth(1)).toHaveAttribute('data-active', 'true')
