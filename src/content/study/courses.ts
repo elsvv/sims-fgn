@@ -72,19 +72,24 @@ export const COURSES: CourseCatalog = {
 }
 
 /**
- * Расписание модуля. Аудитории — настоящие номера корпуса А,
- * зафиксированные в расписаниях и программах конференций ФГН.
- * Учебная неделя шестидневная: 0 — понедельник, 5 — суббота.
+ * Расписание модуля. Учебная неделя шестидневная: 0 — понедельник, 5 — суббота.
+ *
+ * Все пары стоят в двух аудиториях второго этажа корпуса А — единственного
+ * этажа, который в игре пока построен. Пара в аудитории, куда нельзя дойти,
+ * означала бы автоматический прогул: посещаемость считается по тому, где
+ * стоит персонаж. Настоящие номера аудиторий ФГН с третьего этажа —
+ * А-308, А-312, А-323 (research/building.md) — вернутся в расписание
+ * вместе с самим третьим этажом.
  */
 export const SCHEDULE: Schedule = [
   { id: 'greek-mon', courseId: 'greek', kind: 'seminar', weekday: 0, period: 0, room: 'А-204' },
-  { id: 'histphil-mon', courseId: 'histphil', kind: 'lecture', weekday: 0, period: 1, room: 'А-308' },
-  { id: 'logic-tue', courseId: 'logic', kind: 'lecture', weekday: 1, period: 1, room: 'А-312' },
+  { id: 'histphil-mon', courseId: 'histphil', kind: 'lecture', weekday: 0, period: 1, room: 'А-206' },
+  { id: 'logic-tue', courseId: 'logic', kind: 'lecture', weekday: 1, period: 1, room: 'А-206' },
   { id: 'nis-tue', courseId: 'nis', kind: 'seminar', weekday: 1, period: 2, room: 'А-204' },
   { id: 'greek-wed', courseId: 'greek', kind: 'seminar', weekday: 2, period: 0, room: 'А-204' },
-  { id: 'ontology-wed', courseId: 'ontology', kind: 'seminar', weekday: 2, period: 2, room: 'А-323' },
-  { id: 'histphil-thu', courseId: 'histphil', kind: 'seminar', weekday: 3, period: 1, room: 'А-308' },
-  { id: 'logic-thu', courseId: 'logic', kind: 'seminar', weekday: 3, period: 2, room: 'А-312' },
+  { id: 'ontology-wed', courseId: 'ontology', kind: 'seminar', weekday: 2, period: 2, room: 'А-206' },
+  { id: 'histphil-thu', courseId: 'histphil', kind: 'seminar', weekday: 3, period: 1, room: 'А-206' },
+  { id: 'logic-thu', courseId: 'logic', kind: 'seminar', weekday: 3, period: 2, room: 'А-206' },
   { id: 'nis-fri', courseId: 'nis', kind: 'seminar', weekday: 4, period: 1, room: 'А-204' },
   { id: 'greek-sat', courseId: 'greek', kind: 'seminar', weekday: 5, period: 0, room: 'А-204' },
 ]

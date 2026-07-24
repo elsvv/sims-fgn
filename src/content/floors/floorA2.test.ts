@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { findApproachCell } from '../../sim/interaction/approach'
 import { findPath } from '../../sim/nav/findPath'
+import { validateRooms } from '../../sim/world/FloorPlan'
 import { NavGrid } from '../../sim/world/NavGrid'
 import { PROP_CATALOG } from '../props/propCatalog'
+import { SCHEDULE } from '../study/courses'
 import { FLOOR_A2, FLOOR_A2_SPAWN } from './floorA2'
 
 describe('корпус А, 2 этаж', () => {
@@ -80,6 +82,54 @@ describe('корпус А, 2 этаж', () => {
     const grid = new NavGrid(FLOOR_A2)
     expect(findPath(grid, FLOOR_A2_SPAWN, { col: 19, row: 10 })).not.toBeNull()
     expect(findPath(grid, FLOOR_A2_SPAWN, { col: 3, row: 10 })).not.toBeNull()
+  })
+
+  it('помещения этажа корректны', () => {
+    expect(validateRooms(FLOOR_A2)).toEqual([])
+  })
+
+  it('каждая клетка помещения проходима', () => {
+    // Помещение, часть которого — стена, означало бы, что расписание
+    // ссылается на клетки, куда игрок никогда не встанет.
+    const grid = new NavGrid({ ...FLOOR_A2, props: [] })
+    for (const room of FLOOR_A2.rooms) {
+      for (let row = room.row0; row <= room.row1; row++) {
+        for (let col = room.col0; col <= room.col1; col++) {
+          expect(grid.isWalkable({ col, row }), `${room.id}: клетка ${col},${row}`).toBe(true)
+        }
+      }
+    }
+  })
+
+  it('характерные точки этажа опознаются как нужные помещения', () => {
+    const grid = new NavGrid(FLOOR_A2)
+    expect(grid.roomAt({ col: 4, row: 2 })?.id).toBe('А-204')
+    expect(grid.roomAt({ col: 18, row: 2 })?.id).toBe('А-206')
+    expect(grid.roomAt(FLOOR_A2_SPAWN)?.id).toBe('коридор')
+    expect(grid.roomAt({ col: 3, row: 10 })?.id).toBe('туалеты')
+    expect(grid.roomAt({ col: 19, row: 10 })?.id).toBe('лифтовый холл')
+  })
+
+  it('стены и дверные проёмы не принадлежат помещениям', () => {
+    const grid = new NavGrid(FLOOR_A2)
+    expect(grid.roomAt({ col: 0, row: 0 })).toBeNull()
+    expect(grid.roomAt({ col: 4, row: 5 })).toBeNull()
+    expect(grid.roomAt({ col: 11, row: 2 })).toBeNull()
+  })
+
+  it('каждая аудитория из расписания есть на этаже', () => {
+    const ids = new Set(FLOOR_A2.rooms.map((room) => room.id))
+    for (const lesson of SCHEDULE) {
+      expect(ids.has(lesson.room), `${lesson.id}: аудитории ${lesson.room} нет на этаже`).toBe(
+        true,
+      )
+    }
+  })
+
+  it('обе аудитории этажа заняты хотя бы одним занятием', () => {
+    for (const id of ['А-204', 'А-206']) {
+      expect(SCHEDULE.some((lesson) => lesson.room === id), id).toBe(true)
+    }
   })
 
   it('у каждого предмета в каталоге есть хотя бы одно действие', () => {

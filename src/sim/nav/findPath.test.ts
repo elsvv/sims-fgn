@@ -11,6 +11,7 @@ function makeGrid(tiles: string[]): NavGrid {
     legend: { '#': 'wall', '.': 'floor', ' ': 'void' },
     tiles,
     props: [],
+    rooms: [],
   }
   return new NavGrid(plan)
 }
