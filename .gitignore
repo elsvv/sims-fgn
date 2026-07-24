@@ -3,3 +3,8 @@ dist
 .DS_Store
 *.local
 research/refs
+
+# Отчёты и следы прогонов playwright. Скриншоты из screenshots/ —
+# наоборот, свидетельство и лежат в репозитории.
+test-results
+playwright-report

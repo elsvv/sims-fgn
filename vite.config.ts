@@ -7,5 +7,7 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
+    // Браузерные тесты гоняет playwright, vitest не должен их даже видеть.
+    exclude: ['node_modules/**', 'dist/**', 'e2e/**'],
   },
 })

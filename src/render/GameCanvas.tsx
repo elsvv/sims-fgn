@@ -27,7 +27,7 @@ export function GameCanvas({ onSelectProp }: { onSelectProp: (propId: string) =>
   return (
     <Canvas
       shadows
-      camera={{ position: [22, 20, 26], fov: 32 }}
+      camera={{ position: [25.3, 26.7, 33.2], fov: 32 }}
       style={{ position: 'absolute', inset: 0 }}
     >
       <color attach="background" args={['#0f1116']} />
@@ -47,13 +47,16 @@ export function GameCanvas({ onSelectProp }: { onSelectProp: (propId: string) =>
 
       <Scene onSelectProp={onSelectProp} />
 
+      {/* Цель — середина этажа, а не глазомерная точка: иначе дальний угол
+          здания вылезает за край кадра. Дистанция подобрана так, чтобы весь
+          этаж 24×13 помещался целиком с запасом по краям. */}
       <OrbitControls
-        target={[12, 0, 6]}
+        target={[12, 0, 6.5]}
         enablePan={false}
         minPolarAngle={Math.PI / 6}
         maxPolarAngle={Math.PI / 2.6}
-        minDistance={14}
-        maxDistance={55}
+        minDistance={16}
+        maxDistance={70}
       />
     </Canvas>
   )
