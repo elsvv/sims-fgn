@@ -37,6 +37,30 @@ describe('корпус А, 2 этаж', () => {
     expect(new NavGrid(FLOOR_A2).isWalkable(FLOOR_A2_SPAWN)).toBe(true)
   })
 
+  it('игрок появляется не вплотную к предметам', () => {
+    for (const prop of FLOOR_A2.props) {
+      const distance = Math.max(
+        Math.abs(prop.col - FLOOR_A2_SPAWN.col),
+        Math.abs(prop.row - FLOOR_A2_SPAWN.row),
+      )
+      expect(distance, `${prop.id} стоит вплотную к точке появления`).toBeGreaterThan(1)
+    }
+  })
+
+  it('ни один предмет каталога не шире и не глубже клетки', () => {
+    // Предмет занимает ровно одну клетку навигации. Если он больше клетки,
+    // он визуально накроет соседние — по которым персонаж всё равно пройдёт.
+    // Высота не проверяется: вверх ходить нельзя.
+    for (const definition of Object.values(PROP_CATALOG)) {
+      expect(definition.size.w, `${definition.kind}: ширина`).toBeLessThanOrEqual(
+        FLOOR_A2.cellSize,
+      )
+      expect(definition.size.d, `${definition.kind}: глубина`).toBeLessThanOrEqual(
+        FLOOR_A2.cellSize,
+      )
+    }
+  })
+
   it('от точки появления достижим каждый предмет', () => {
     const grid = new NavGrid(FLOOR_A2)
     for (const prop of FLOOR_A2.props) {

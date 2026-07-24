@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react'
 import type { FloorPlan, TileKind } from '../../sim/world/FloorPlan'
 import type { PropCatalog } from '../../sim/world/PropDefinition'
 import { PropMesh, WALL_HEIGHT } from './PropMesh'
+import { buildWallSegments } from './wallSegments'
 
 interface Cell {
   col: number
@@ -26,6 +27,15 @@ const DOOR_COLOR = '#7a5c3a'
  * но человек ростом 1.78 виден над ней целиком.
  */
 const CUT_WALL_HEIGHT = 0.9
+
+/**
+ * Группы, на которые делятся клетки стен перед слиянием в отрезки.
+ * Различаются только высотой: срезанную стену нельзя слить с целой.
+ */
+const WALL_GROUP_HEIGHT: Record<string, number> = {
+  tall: WALL_HEIGHT,
+  cut: CUT_WALL_HEIGHT,
+}
 
 function readCells(plan: FloorPlan): Cell[] {
   const cells: Cell[] = []
@@ -71,20 +81,24 @@ function useViewSide(centerX: number, centerZ: number): ViewSide {
  */
 function isBackWall(
   kindAt: (col: number, row: number) => TileKind,
-  cell: Cell,
+  col: number,
+  row: number,
   side: ViewSide,
 ): boolean {
   const behind: readonly (readonly [number, number])[] = [
-    [cell.col - side.x, cell.row],
-    [cell.col, cell.row - side.z],
-    [cell.col - side.x, cell.row - side.z],
+    [col - side.x, row],
+    [col, row - side.z],
+    [col - side.x, row - side.z],
   ]
-  return behind.some(([col, row]) => kindAt(col, row) === 'void')
+  return behind.some(([c, r]) => kindAt(c, r) === 'void')
 }
 
 /**
  * Строит геометрию этажа из той же планировки, по которой считается навигация.
  * Один источник правды — видимое и проходимое не могут разойтись.
+ *
+ * Стены не рисуются по клеткам: подряд идущие клетки одной высоты сливаются
+ * в один растянутый бокс, иначе на каждом стыке видно шов.
  */
 export function FloorMesh({
   plan,
@@ -105,44 +119,63 @@ export function FloorMesh({
   }, [cells])
 
   const cols = plan.tiles.reduce((max, line) => Math.max(max, line.length), 0)
-  const side = useViewSide((cols * size) / 2, (plan.tiles.length * size) / 2)
+  const rows = plan.tiles.length
+  const side = useViewSide((cols * size) / 2, (rows * size) / 2)
+
+  // Пересобирается только при смене планировки или стороны обзора —
+  // то есть при повороте камеры через угол здания, а не каждый кадр.
+  const wallSegments = useMemo(
+    () =>
+      buildWallSegments({
+        cols,
+        rows,
+        keyAt: (col, row) => {
+          if (kindAt(col, row) !== 'wall') return null
+          return isBackWall(kindAt, col, row, side) ? 'tall' : 'cut'
+        },
+      }),
+    [cols, rows, kindAt, side],
+  )
+
+  const floorCells = cells.filter((cell) => cell.kind !== 'wall')
 
   return (
     <group>
-      {cells.map((cell) => {
-        const x = (cell.col + 0.5) * size
-        const z = (cell.row + 0.5) * size
-
-        if (cell.kind === 'wall') {
-          const height = isBackWall(kindAt, cell, side) ? WALL_HEIGHT : CUT_WALL_HEIGHT
-          return (
-            <mesh
-              key={`w-${cell.col}-${cell.row}`}
-              position={[x, height / 2, z]}
-              castShadow
-              receiveShadow
-            >
-              <boxGeometry args={[size, height, size]} />
-              <meshStandardMaterial color={WALL_COLOR} roughness={0.95} />
-            </mesh>
-          )
-        }
-
+      {wallSegments.map((segment) => {
+        const height = WALL_GROUP_HEIGHT[segment.key] ?? WALL_HEIGHT
+        const spanX = segment.axis === 'x' ? segment.length : 1
+        const spanZ = segment.axis === 'z' ? segment.length : 1
         return (
           <mesh
-            key={`f-${cell.col}-${cell.row}`}
-            position={[x, 0, z]}
-            rotation={[-Math.PI / 2, 0, 0]}
+            key={`w-${segment.axis}-${segment.col}-${segment.row}`}
+            position={[
+              (segment.col + spanX / 2) * size,
+              height / 2,
+              (segment.row + spanZ / 2) * size,
+            ]}
+            castShadow
             receiveShadow
           >
-            <planeGeometry args={[size, size]} />
-            <meshStandardMaterial
-              color={cell.kind === 'door' ? DOOR_COLOR : FLOOR_COLOR}
-              roughness={0.9}
-            />
+            <boxGeometry args={[spanX * size, height, spanZ * size]} />
+            <meshStandardMaterial color={WALL_COLOR} roughness={0.95} />
           </mesh>
         )
       })}
+
+      {floorCells.map((cell) => (
+        <mesh
+          key={`f-${cell.col}-${cell.row}`}
+          position={[(cell.col + 0.5) * size, 0, (cell.row + 0.5) * size]}
+          rotation={[-Math.PI / 2, 0, 0]}
+          receiveShadow
+        >
+          <planeGeometry args={[size, size]} />
+          <meshStandardMaterial
+            color={cell.kind === 'door' ? DOOR_COLOR : FLOOR_COLOR}
+            roughness={0.9}
+          />
+        </mesh>
+      ))}
 
       {plan.props.map((placement) => (
         <PropMesh

@@ -6,10 +6,17 @@ import { useWorld } from '../useWorld'
 import { createAppearance } from './CharacterAppearance'
 import { ProceduralCharacter } from './ProceduralCharacter'
 
+/**
+ * Игрок одет ярче всех остальных. Это не вкусовщина: пол бежевый, стены
+ * почти белые, предметы приглушённые — синяя куртка на таком фоне терялась,
+ * а в тени становилась неотличима от тёмного силуэта автомата. Тёплый
+ * терракотовый верх не встречается больше нигде на этаже, поэтому фигуру
+ * видно с любого ракурса и на любом расстоянии.
+ */
 const PLAYER_LOOK = createAppearance({
   height: 1.78,
-  top: '#4a5d7e',
-  bottom: '#23262c',
+  top: '#d2622e',
+  bottom: '#39414f',
   hairStyle: 'medium',
 })
 

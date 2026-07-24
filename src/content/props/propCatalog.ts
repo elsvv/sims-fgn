@@ -5,12 +5,19 @@ import type { PropCatalog } from '../../sim/world/PropDefinition'
  * Числа в needDelta — игровой баланс, а не физика: кофе бодрит сильно,
  * но бьёт по мочевому пузырю; ожидание лифта не даёт ничего, кроме
  * стресса, и это ровно то, чего мы добиваемся.
+ *
+ * Габариты — не физика тоже, а следствие сетки: предмет занимает ровно
+ * одну клетку навигации, поэтому ни ширина, ни глубина не могут выходить
+ * за размер клетки. Иначе видимое разойдётся с проходимым — доска накроет
+ * соседнюю клетку, по которой персонаж всё равно спокойно пройдёт.
+ * Правило сторожит тест в src/content/floors/floorA2.test.ts.
+ * Высота ничем не ограничена: вверх ходить нельзя.
  */
 export const PROP_CATALOG: PropCatalog = {
   desk: {
     kind: 'desk',
     label: 'Парта',
-    size: { w: 1.2, d: 0.6, h: 0.75 },
+    size: { w: 0.9, d: 0.6, h: 0.75 },
     color: '#c8b18b',
     blocks: true,
     interactions: [
@@ -31,7 +38,7 @@ export const PROP_CATALOG: PropCatalog = {
   whiteboard: {
     kind: 'whiteboard',
     label: 'Доска',
-    size: { w: 2.4, d: 0.1, h: 1.2 },
+    size: { w: 0.9, d: 0.1, h: 1.2 },
     color: '#2b3a2f',
     blocks: true,
     interactions: [
@@ -91,7 +98,7 @@ export const PROP_CATALOG: PropCatalog = {
   bench: {
     kind: 'bench',
     label: 'Скамейка в коридоре',
-    size: { w: 1.6, d: 0.5, h: 0.45 },
+    size: { w: 0.9, d: 0.5, h: 0.45 },
     color: '#8a6f4d',
     blocks: true,
     interactions: [
@@ -112,7 +119,7 @@ export const PROP_CATALOG: PropCatalog = {
   noticeBoard: {
     kind: 'noticeBoard',
     label: 'Доска объявлений',
-    size: { w: 1.4, d: 0.1, h: 1.0 },
+    size: { w: 0.9, d: 0.1, h: 1.0 },
     color: '#102d69',
     blocks: true,
     interactions: [
@@ -142,7 +149,7 @@ export const PROP_CATALOG: PropCatalog = {
   elevator: {
     kind: 'elevator',
     label: 'Лифт',
-    size: { w: 1.6, d: 0.3, h: 2.2 },
+    size: { w: 0.9, d: 0.3, h: 2.2 },
     color: '#9aa3ab',
     blocks: true,
     interactions: [
