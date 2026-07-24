@@ -1,0 +1,108 @@
+.hud {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  color: #e8e8ea;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+.hud__panel {
+  position: absolute;
+  background: rgba(18, 21, 27, 0.86);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 12px 14px;
+  pointer-events: auto;
+  backdrop-filter: blur(6px);
+}
+
+.hud__needs { left: 16px; bottom: 16px; width: 230px; }
+.hud__time { right: 16px; top: 16px; text-align: right; }
+
+.need { margin-bottom: 8px; }
+.need:last-child { margin-bottom: 0; }
+
+.need__label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  margin-bottom: 3px;
+  opacity: 0.85;
+}
+
+.need__track {
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+
+.need__fill { height: 100%; border-radius: 3px; transition: width 120ms linear; }
+
+.hud__clock { font-size: 26px; font-weight: 600; letter-spacing: 0.5px; }
+.hud__day { font-size: 12px; opacity: 0.7; margin-bottom: 8px; }
+.hud__mood { margin-top: 10px; font-size: 12px; opacity: 0.8; }
+
+.speed-buttons { display: flex; gap: 6px; justify-content: flex-end; }
+
+.speed-buttons button {
+  width: 34px;
+  height: 28px;
+  border-radius: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: #e8e8ea;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.speed-buttons button[data-active='true'] {
+  background: #3d6ce0;
+  border-color: #5c85ea;
+}
+
+.hud__menu {
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  min-width: 250px;
+}
+
+.hud__menu-title {
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0.75;
+  margin-bottom: 8px;
+}
+
+.hud__menu-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  padding: 9px 11px;
+  margin-bottom: 5px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  color: #e8e8ea;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.hud__menu-item:hover { background: rgba(61, 108, 224, 0.35); }
+.hud__menu-item--cancel { opacity: 0.55; margin-bottom: 0; }
+.hud__menu-time { opacity: 0.5; }
+
+.hud__activity {
+  position: absolute;
+  left: 50%;
+  bottom: 22px;
+  transform: translateX(-50%);
+  font-size: 13px;
+  background: rgba(18, 21, 27, 0.86);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  padding: 7px 16px;
+}
