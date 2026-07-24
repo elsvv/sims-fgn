@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import type { CourseCatalog } from './study/Course'
+import { PERIODS, type Schedule } from './study/Schedule'
+import { StudyState } from './study/StudyState'
 import { World } from './World'
 import type { FloorPlan } from './world/FloorPlan'
 import type { PropCatalog } from './world/PropDefinition'
@@ -12,6 +15,7 @@ const PLAN: FloorPlan = {
   props: [
     { id: 'coffee-1', kind: 'coffeeMachine', col: 4, row: 1, rotation: 0, blocks: true },
   ],
+  rooms: [],
 }
 
 const CATALOG: PropCatalog = {
@@ -86,6 +90,16 @@ describe('World: время и нужды', () => {
     expect(snap.mood).toBeGreaterThan(90)
     expect(snap.activity).toBeNull()
   })
+
+  it('мир без учёбы работает и молчит о занятиях', () => {
+    const world = makeWorld()
+    world.tick(0.1)
+    const snap = world.snapshot()
+    expect(world.study).toBeNull()
+    expect(snap.currentRoom).toBeNull()
+    expect(snap.currentLesson).toBeNull()
+    expect(snap.nextLesson).toBeNull()
+  })
 })
 
 describe('World: движение', () => {
@@ -155,5 +169,138 @@ describe('World: взаимодействия', () => {
     world.commandInteract('coffee-1', 'drinkCoffee')
     world.commandMoveTo({ col: 0, row: 2 })
     expect(world.activeInteraction).toBeNull()
+  })
+})
+
+const STUDY_PLAN: FloorPlan = {
+  id: 'study',
+  name: 'Учебный этаж',
+  cellSize: 1,
+  legend: { '#': 'wall', '.': 'floor' },
+  tiles: [
+    '....#....',
+    '....#....',
+    '.........',
+  ],
+  props: [],
+  rooms: [
+    { id: 'А-204', name: 'Аудитория А-204', col0: 0, row0: 0, col1: 3, row1: 1 },
+    { id: 'А-206', name: 'Аудитория А-206', col0: 5, row0: 0, col1: 8, row1: 1 },
+    { id: 'коридор', name: 'Коридор', col0: 0, row0: 2, col1: 8, row1: 2 },
+  ],
+}
+
+const STUDY_COURSES: CourseCatalog = {
+  greek: {
+    id: 'greek',
+    title: 'Древнегреческий язык',
+    short: 'Греческий',
+    teacherId: 'alieva',
+    assessments: [
+      { id: 'classwork', label: 'Работа на занятиях', weight: 1, kind: 'seminar', blocking: false },
+    ],
+  },
+}
+
+const STUDY_SCHEDULE: Schedule = [
+  { id: 'greek-mon', courseId: 'greek', kind: 'seminar', weekday: 0, period: 0, room: 'А-204' },
+]
+
+const FIRST = PERIODS[0]!
+
+const IN_CLASS = { col: 1, row: 0 }
+const IN_CORRIDOR = { col: 1, row: 2 }
+const IN_OTHER_CLASS = { col: 6, row: 0 }
+
+function makeStudyWorld(spawn: { col: number; row: number }): World {
+  const study = new StudyState({
+    courses: STUDY_COURSES,
+    schedule: STUDY_SCHEDULE,
+    essays: [],
+  })
+  return new World(STUDY_PLAN, spawn, {}, study)
+}
+
+/** Прокручивает игровое время до указанной минуты суток. */
+function runUntil(world: World, minutes: number): void {
+  world.clock.speed = 3
+  for (let i = 0; i < 20000 && world.clock.time.minutes < minutes; i++) world.tick(0.25)
+  expect(world.clock.time.minutes).toBeGreaterThanOrEqual(minutes)
+}
+
+describe('World: учёба', () => {
+  it('засчитывает присутствие, если персонаж стоит в нужной аудитории', () => {
+    const world = makeStudyWorld(IN_CLASS)
+    runUntil(world, FIRST.startMinutes + 5)
+    expect(world.study?.attendance.markFor('greek-mon')).toBe('present')
+  })
+
+  it('ставит прогул, если персонаж простоял пару в коридоре', () => {
+    const world = makeStudyWorld(IN_CORRIDOR)
+    runUntil(world, FIRST.startMinutes + 5)
+    expect(world.study?.attendance.markFor('greek-mon')).toBeNull()
+
+    runUntil(world, FIRST.endMinutes + 5)
+    expect(world.study?.attendance.markFor('greek-mon')).toBe('absent')
+  })
+
+  it('ставит прогул, если персонаж просидел пару в соседней аудитории', () => {
+    const world = makeStudyWorld(IN_OTHER_CLASS)
+    runUntil(world, FIRST.endMinutes + 5)
+    expect(world.study?.attendance.markFor('greek-mon')).toBe('absent')
+  })
+
+  it('засчитывает опоздание тому, кто дошёл до аудитории к середине пары', () => {
+    const world = makeStudyWorld(IN_CORRIDOR)
+    runUntil(world, FIRST.startMinutes + 30)
+    world.commandMoveTo(IN_CLASS)
+    runUntil(world, FIRST.startMinutes + 40)
+    expect(world.study?.attendance.markFor('greek-mon')).toBe('late')
+  })
+
+  it('не перезаписывает отметку, если персонаж досидел пару до звонка', () => {
+    const world = makeStudyWorld(IN_CLASS)
+    runUntil(world, FIRST.endMinutes + 30)
+    expect(world.study?.attendance.markFor('greek-mon')).toBe('present')
+  })
+
+  it('на паузе посещаемость не меняется', () => {
+    const world = makeStudyWorld(IN_CORRIDOR)
+    world.clock.speed = 0
+    world.tick(1)
+    expect(world.study?.attendance.markFor('greek-mon')).toBeNull()
+  })
+
+  it('показывает в снимке помещение, где стоит персонаж', () => {
+    expect(makeStudyWorld(IN_CLASS).snapshot().currentRoom).toBe('А-204')
+    expect(makeStudyWorld(IN_CORRIDOR).snapshot().currentRoom).toBe('коридор')
+  })
+
+  it('показывает ближайшую пару и время до звонка', () => {
+    const snap = makeStudyWorld(IN_CORRIDOR).snapshot()
+    expect(snap.currentLesson).toBeNull()
+    expect(snap.nextLesson).toEqual({
+      courseId: 'greek',
+      room: 'А-204',
+      startsInMinutes: FIRST.startMinutes - 7 * 60,
+    })
+  })
+
+  it('показывает идущую пару, пока она идёт', () => {
+    const world = makeStudyWorld(IN_CORRIDOR)
+    runUntil(world, FIRST.startMinutes + 5)
+    expect(world.snapshot().currentLesson).toEqual({
+      courseId: 'greek',
+      room: 'А-204',
+      kind: 'seminar',
+    })
+  })
+
+  it('после последней пары дня не обещает следующую', () => {
+    const world = makeStudyWorld(IN_CLASS)
+    runUntil(world, FIRST.endMinutes + 5)
+    const snap = world.snapshot()
+    expect(snap.currentLesson).toBeNull()
+    expect(snap.nextLesson).toBeNull()
   })
 })

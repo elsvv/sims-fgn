@@ -7,6 +7,9 @@ import {
   decayNeeds,
   type Needs,
 } from './needs/needs'
+import { decideAttendance } from './study/AttendanceTracker'
+import { lessonAt, nextLessonOnDay, periodOf, type Lesson } from './study/Schedule'
+import type { StudyState } from './study/StudyState'
 import { GameClock, type Speed } from './time/GameClock'
 import type { GridPos, Vec2 } from './types'
 import type { FloorPlan } from './world/FloorPlan'
@@ -28,6 +31,21 @@ export interface ActiveInteraction {
   needDelta: Partial<Needs>
 }
 
+/** Пара, которая идёт прямо сейчас. */
+export interface CurrentLessonInfo {
+  courseId: string
+  room: string
+  kind: Lesson['kind']
+}
+
+/** Ближайшая пара, которая ещё не началась. */
+export interface NextLessonInfo {
+  courseId: string
+  room: string
+  /** Через сколько игровых минут звонок. */
+  startsInMinutes: number
+}
+
 export interface WorldSnapshot {
   day: number
   minutes: number
@@ -41,6 +59,10 @@ export interface WorldSnapshot {
   isPlayerMoving: boolean
   /** Подпись текущего занятия или null, если персонаж свободен. */
   activity: string | null
+  /** Помещение, где стоит персонаж: «А-204», «коридор». null — в дверях или в стене. */
+  currentRoom: string | null
+  currentLesson: CurrentLessonInfo | null
+  nextLesson: NextLessonInfo | null
 }
 
 /**
@@ -53,19 +75,32 @@ export class World {
   readonly grid: NavGrid
   readonly plan: FloorPlan
   readonly catalog: PropCatalog
+  /** Учебное состояние. null — мир без учёбы: так собраны тесты движения и нужд. */
+  readonly study: StudyState | null
   player: Actor
   needs: Needs = createNeeds()
   activeInteraction: ActiveInteraction | null = null
 
-  constructor(plan: FloorPlan, spawn: GridPos, catalog: PropCatalog = {}) {
+  constructor(
+    plan: FloorPlan,
+    spawn: GridPos,
+    catalog: PropCatalog = {},
+    study: StudyState | null = null,
+  ) {
     this.plan = plan
     this.catalog = catalog
+    this.study = study
     this.grid = new NavGrid(plan)
     this.player = createActor('player', this.grid.gridToWorld(spawn))
   }
 
   get mood(): number {
     return calculateMood(this.needs)
+  }
+
+  /** Помещение, в котором стоит персонаж, или null. */
+  get currentRoom(): string | null {
+    return this.grid.roomAt(this.grid.worldToGrid(this.player.position))?.id ?? null
   }
 
   /** @param realDeltaSeconds время, прошедшее с прошлого кадра. */
@@ -77,6 +112,7 @@ export class World {
     this.needs = decayNeeds(this.needs, gameMinutes)
     stepActor(this.player, this.grid, delta * this.clock.speed)
     this.advanceInteraction(gameMinutes)
+    this.updateAttendance()
   }
 
   commandMoveTo(target: GridPos): boolean {
@@ -119,6 +155,49 @@ export class World {
     this.needs = applyNeedDelta(this.needs, delta)
   }
 
+  /**
+   * Ставит отметки о посещении по тому, где стоит персонаж.
+   * Вызывается из tick: посещаемость — следствие поведения игрока,
+   * а не отдельной команды.
+   */
+  private updateAttendance(): void {
+    const study = this.study
+    if (!study) return
+
+    const { day, minutes } = this.clock.time
+    const decisions = decideAttendance({
+      schedule: study.config.schedule,
+      day,
+      minutes,
+      room: this.currentRoom,
+      markFor: (lessonId) => study.attendance.markFor(lessonId),
+    })
+
+    for (const decision of decisions) {
+      study.attendLesson(decision.lessonId, decision.courseId, decision.mark)
+    }
+  }
+
+  private currentLessonInfo(day: number, minutes: number): CurrentLessonInfo | null {
+    if (!this.study) return null
+    const lesson = lessonAt(this.study.config.schedule, day, minutes)
+    if (!lesson) return null
+    return { courseId: lesson.courseId, room: lesson.room, kind: lesson.kind }
+  }
+
+  private nextLessonInfo(day: number, minutes: number): NextLessonInfo | null {
+    if (!this.study) return null
+    const lesson = nextLessonOnDay(this.study.config.schedule, day, minutes)
+    if (!lesson) return null
+    const period = periodOf(lesson.period)
+    if (!period) return null
+    return {
+      courseId: lesson.courseId,
+      room: lesson.room,
+      startsInMinutes: period.startMinutes - minutes,
+    }
+  }
+
   snapshot(): WorldSnapshot {
     const { day, minutes } = this.clock.time
     return {
@@ -133,6 +212,9 @@ export class World {
       playerFacing: this.player.facing,
       isPlayerMoving: isMoving(this.player),
       activity: this.activeInteraction?.label ?? null,
+      currentRoom: this.currentRoom,
+      currentLesson: this.currentLessonInfo(day, minutes),
+      nextLesson: this.nextLessonInfo(day, minutes),
     }
   }
 
