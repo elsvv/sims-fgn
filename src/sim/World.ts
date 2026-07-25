@@ -123,7 +123,7 @@ import { GameClock, MINUTES_PER_DAY, type Speed } from './time/GameClock'
 import type { GridPos, Vec2 } from './types'
 import type { FloorPlan } from './world/FloorPlan'
 import { NavGrid } from './world/NavGrid'
-import type { PropCatalog } from './world/PropDefinition'
+import type { InteractionSkillGain, PropCatalog } from './world/PropDefinition'
 
 /**
  * Максимальная длительность одного тика в реальных секундах.
@@ -163,6 +163,10 @@ export interface ActiveInteraction {
   /** Сколько игровых минут действия осталось. Тикает только когда персонаж дошёл. */
   remainingMinutes: number
   needDelta: Partial<Needs>
+  /** Что вырастет в навыках по завершении. Пусто — ничего. */
+  skills: readonly InteractionSkillGain[]
+  /** Сколько минут уйдёт в ближайшее несданное эссе. Ноль — ни одной. */
+  essayMinutes: number
   /** Какой модификатор настроения повесить по завершении. null — никакого. */
   moodletId: string | null
   /**
@@ -687,6 +691,8 @@ export class World {
       label: interaction.label,
       remainingMinutes: interaction.durationMinutes,
       needDelta: interaction.needDelta,
+      skills: interaction.skills ?? [],
+      essayMinutes: interaction.essayMinutes ?? 0,
       moodletId: interaction.moodletId ?? null,
       sleepSpotKind: null,
     }
@@ -735,6 +741,8 @@ export class World {
       label: spot.actionLabel,
       remainingMinutes: SLEEP_SETTLE_MINUTES,
       needDelta: {},
+      skills: [],
+      essayMinutes: 0,
       moodletId: null,
       sleepSpotKind: placement.kind,
     }
@@ -1833,6 +1841,11 @@ export class World {
     active.remainingMinutes -= gameMinutes
     if (active.remainingMinutes <= 0) {
       this.applyNeeds(active.needDelta)
+      for (const gain of active.skills) this.trainSkill(gain.id, gain.amount)
+      // Действие засчитывается целиком и только в конце: встал из-за стола
+      // на середине — не написал ничего. Это то же правило, что и у нужд,
+      // и оно же не даёт накручивать эссе, начиная действие раз за разом.
+      this.workOnEssay(active.essayMinutes)
       if (active.moodletId) this.addMoodletById(active.moodletId)
       const sleepSpotKind = active.sleepSpotKind
       this.activeInteraction = null

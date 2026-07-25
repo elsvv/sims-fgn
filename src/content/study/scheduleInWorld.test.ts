@@ -166,3 +166,67 @@ describe('неделя по настоящему расписанию', () => {
     }
   })
 })
+
+/**
+ * Окно, прожитое миром.
+ *
+ * Пункт 4 списка проблем состоит из двух половин, и вторая — вот эта:
+ * «между ними и после них заняться нечем». Расписание может быть каким
+ * угодно плотным, но если полтора часа между парами нечем занять, день
+ * всё равно проматывается сном. Проверки каталога (props/propCatalog.test.ts)
+ * читают данные; здесь игрок идёт по настоящему этажу к настоящим
+ * предметам и укладывается в настоящее окно.
+ */
+function finishInteraction(world: World, propId: string, interactionId: string): void {
+  const what = `${propId}.${interactionId}`
+  expect(world.commandInteract(propId, interactionId), what).toBe(true)
+  world.clock.speed = 3
+  for (let i = 0; i < 40000 && world.activeInteraction !== null; i++) {
+    world.tick(0.25)
+    world.dismissDaySummary()
+  }
+  expect(world.activeInteraction, what).toBeNull()
+}
+
+/** Понедельничное окно: между второй парой и третьей, с 11:50 до 13:50. */
+const MONDAY_WINDOW_START = 11 * 60 + 55
+
+describe('окно между парами — ресурс, а не пустота', () => {
+  it('в окне можно поесть, поговорить и умыться, и всё это в него влезает', () => {
+    const world = createWorld()
+    runTo(world, 0, MONDAY_WINDOW_START)
+    expect(world.snapshot().currentLesson).toBeNull()
+    world.applyNeeds({ hunger: -70, social: -70, hygiene: -70 })
+
+    const hungry = world.needs.hunger
+    finishInteraction(world, 'vending-1', 'vendingLunch')
+    expect(world.needs.hunger).toBeGreaterThan(hungry + 30)
+
+    const lonely = world.needs.social
+    finishInteraction(world, 'bench-1', 'chatWithClassmates')
+    expect(world.needs.social).toBeGreaterThan(lonely + 20)
+
+    const grubby = world.needs.hygiene
+    finishInteraction(world, 'toilet-1', 'washUp')
+    expect(world.needs.hygiene).toBeGreaterThan(grubby + 20)
+
+    // Всё это вместе с дорогой уместилось в окно: третья пара ещё впереди.
+    expect(world.snapshot().currentLesson).toBeNull()
+    expect(world.snapshot().nextLesson).not.toBeNull()
+  })
+
+  it('час за партой в пустой аудитории уходит в эссе и в письмо', () => {
+    const world = createWorld()
+    runTo(world, 0, MONDAY_WINDOW_START)
+    const task = world.study?.pendingEssays(0)[0]
+    expect(task, 'к первому дню не назначено ни одного эссе').toBeDefined()
+
+    finishInteraction(world, 'a204-desk-1', 'writeEssay')
+
+    expect(world.skills.academicWriting).toBeGreaterThan(0)
+    expect(world.study?.essays.progressFor(task!.id)?.effort).toBe(60)
+    expect(world.snapshot().activeMoodlets.map((m) => m.label)).toContain(
+      'Эссе сдвинулось с мёртвой точки',
+    )
+  })
+})

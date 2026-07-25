@@ -8,6 +8,7 @@ import { createSkills, SKILL_IDS } from './player/Skills'
 import type { Teacher, TeacherCatalog } from './social/Teacher'
 import type { AttendanceMark } from './study/Attendance'
 import type { CourseCatalog } from './study/Course'
+import type { EssayTask } from './study/Essay'
 import { roundGrade } from './study/Gradebook'
 import {
   occurrenceId,
@@ -1144,6 +1145,8 @@ describe('World: подход к собеседнику', () => {
       label: 'Занят',
       remainingMinutes: 10,
       needDelta: {},
+      skills: [],
+      essayMinutes: 0,
       moodletId: null,
       sleepSpotKind: null,
     }
@@ -2389,5 +2392,121 @@ describe('World: два занятия одного курса в разные �
     ]
     expect(validateSchedule(clash).join(' ')).toContain('повторяется')
     expect(validateSchedule(TWO_DAY_SCHEDULE)).toEqual([])
+  })
+})
+
+/**
+ * Действие в окне между парами.
+ *
+ * Пункт 4 списка проблем: «между парами и после них заняться нечем».
+ * Половина ответа — расписание, половина — то, что действие с предметом
+ * умеет отдавать игроку не только нужды: навык растёт, а потраченное
+ * время уходит в ближайшее несданное эссе. Ровно те же два поля есть
+ * у карточки воскресенья: окно — такое же потраченное время, что
+ * и выходной, только в модуле его в разы больше.
+ */
+const WINDOW_ESSAY: EssayTask = {
+  id: 'essay-1',
+  courseId: 'greek',
+  assessmentId: 'seminars',
+  title: 'Эссе по греческому',
+  dueDay: 10,
+  requiredEffort: 300,
+}
+
+const WINDOW_CATALOG: PropCatalog = {
+  desk: {
+    kind: 'desk',
+    label: 'Парта',
+    size: { w: 0.9, d: 0.6, h: 0.75 },
+    color: '#c8b18b',
+    blocks: true,
+    interactions: [
+      {
+        id: 'writeEssay',
+        label: 'Сесть за эссе',
+        durationMinutes: 60,
+        needDelta: { fun: -10 },
+        skills: [{ id: 'academicWriting', amount: 0.4 }],
+        essayMinutes: 60,
+      },
+      {
+        id: 'scrollPhone',
+        label: 'Залипнуть в телефон',
+        durationMinutes: 15,
+        needDelta: { fun: 18 },
+      },
+    ],
+  },
+}
+
+const WINDOW_PLAN: FloorPlan = {
+  ...STUDY_PLAN,
+  props: [{ id: 'desk-1', kind: 'desk', col: 3, row: 2, rotation: 0, blocks: true }],
+}
+
+function makeWindowWorld(): World {
+  const study = new StudyState({
+    courses: SEMINAR_COURSES,
+    schedule: [],
+    essays: [WINDOW_ESSAY],
+    seminarOptions: SEMINAR_OPTIONS,
+  })
+  return new World(WINDOW_PLAN, IN_CORRIDOR, WINDOW_CATALOG, study)
+}
+
+/** Доводит начатое действие до конца. */
+function finishInteraction(world: World): void {
+  world.clock.speed = 3
+  for (let i = 0; i < 20000 && world.activeInteraction !== null; i++) world.tick(0.25)
+  expect(world.activeInteraction).toBeNull()
+}
+
+describe('World: чем занять окно между парами', () => {
+  it('доведённое до конца действие поднимает навык', () => {
+    const world = makeWindowWorld()
+    expect(world.skills.academicWriting).toBe(0)
+
+    expect(world.commandInteract('desk-1', 'writeEssay')).toBe(true)
+    finishInteraction(world)
+
+    expect(world.skills.academicWriting).toBeGreaterThan(0)
+  })
+
+  it('доведённое до конца действие вкладывает время в ближайшее эссе', () => {
+    const world = makeWindowWorld()
+    expect(world.study?.essays.progressFor('essay-1')).toBeNull()
+
+    world.commandInteract('desk-1', 'writeEssay')
+    finishInteraction(world)
+
+    expect(world.study?.essays.progressFor('essay-1')?.effort).toBe(60)
+    expect(world.study?.essays.progressFor('essay-1')?.quality).toBeGreaterThan(0)
+  })
+
+  it('брошенное на середине действие не даёт ни навыка, ни строчки эссе', () => {
+    // Действие засчитывается целиком и только в конце. Иначе эссе можно
+    // было бы накрутить, начиная работу раз за разом и тут же вставая.
+    const world = makeWindowWorld()
+    world.clock.speed = 3
+    world.commandInteract('desk-1', 'writeEssay')
+    for (let i = 0; i < 40; i++) world.tick(0.25)
+    world.commandMoveTo(IN_CORRIDOR)
+
+    expect(world.activeInteraction).toBeNull()
+    expect(world.skills.academicWriting).toBe(0)
+    expect(world.study?.essays.progressFor('essay-1')).toBeNull()
+  })
+
+  it('действие без навыков и эссе меняет только нужды', () => {
+    const world = makeWindowWorld()
+    world.applyNeeds({ fun: -50 })
+
+    world.commandInteract('desk-1', 'scrollPhone')
+    finishInteraction(world)
+
+    expect(world.needs.fun).toBeGreaterThan(50)
+    for (const id of SKILL_IDS) expect(world.skills[id], id).toBe(0)
+    expect(world.study?.essays.progressFor('essay-1')).toBeNull()
   })
 })
