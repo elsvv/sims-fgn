@@ -124,6 +124,7 @@ import type { GridPos, Vec2 } from './types'
 import type { FloorPlan } from './world/FloorPlan'
 import { NavGrid } from './world/NavGrid'
 import type { InteractionSkillGain, PropCatalog } from './world/PropDefinition'
+import { buildSeatMap, seatKey, type SeatSpot } from './world/seats'
 
 /**
  * Максимальная длительность одного тика в реальных секундах.
@@ -494,6 +495,9 @@ export class World {
   readonly grid: NavGrid
   readonly plan: FloorPlan
   readonly catalog: PropCatalog
+  /** Сиденья этажа по клеткам. Стулья не двигаются, карта считается однажды. */
+  private readonly seats: Map<string, SeatSpot>
+
   /** Каталог заготовок модификаторов настроения. Пустой — мир без них. */
   readonly moodletCatalog: MoodletCatalog
   /** Учебное состояние. null — мир без учёбы: так собраны тесты движения и нужд. */
@@ -595,6 +599,7 @@ export class World {
     this.epilogueRules = daily.epilogueRules ?? []
     this.cohort = daily.cohort ?? []
     this.grid = new NavGrid(plan)
+    this.seats = buildSeatMap(plan, catalog)
     this.player = createActor('player', this.grid.gridToWorld(spawn))
     this.npcManager = new NpcManager(npcs, this.grid, study?.config.schedule ?? [])
     this.dayBaseline = this.captureDayBaseline()
@@ -631,6 +636,22 @@ export class World {
   /** Помещение, в котором стоит персонаж, или null. */
   get currentRoom(): string | null {
     return this.grid.roomAt(this.grid.worldToGrid(this.player.position))?.id ?? null
+  }
+
+  /**
+   * Стул, на котором сидит актор, или null.
+   *
+   * Сидит тот, кто стоит на клетке со стулом и никуда не идёт. Идущий
+   * сквозь ряд парт не приседает на каждом стуле по дороге, а дошедший
+   * садится сам — команда «сесть» игре не нужна.
+   *
+   * Спрашивается каждый кадр на каждого человека, поэтому это поиск
+   * по готовой карте, а не перебор предметов этажа.
+   */
+  seatOf(actor: Actor): SeatSpot | null {
+    if (this.seats.size === 0 || isMoving(actor)) return null
+    const cell = this.grid.worldToGrid(actor.position)
+    return this.seats.get(seatKey(cell.col, cell.row)) ?? null
   }
 
   /** @param realDeltaSeconds время, прошедшее с прошлого кадра. */

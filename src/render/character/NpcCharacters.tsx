@@ -12,9 +12,13 @@ import { dragAwareClick } from '../input/sceneClicks'
 import { useWorld } from '../useWorld'
 import { Character } from './Character'
 import { characterYaw, GLTF_FACING_OFFSET } from './facing'
+import { seatedDrop, type Posture } from './posture'
 
 /** На сколько подпись висит выше макушки, в метрах. */
 const LABEL_LIFT = 0.3
+
+/** Какая доля роста приходится на тазобедренный сустав. Канон, см. ProceduralCharacter. */
+const HIP_SHARE = 0.47
 
 /**
  * Во сколько раз подпись мельче при удалении камеры.
@@ -78,7 +82,8 @@ function talkTo(world: World, npc: Npc): void {
 function NpcCharacter({ npc }: { npc: Npc }) {
   const world = useWorld()
   const group = useRef<Group>(null)
-  const [walking, setWalking] = useState(false)
+  const [posture, setPosture] = useState<Posture>('stand')
+  const [seatHeight, setSeatHeight] = useState<number | null>(null)
 
   const appearance = lookOf(npc)
   const label = nameOf(npc)
@@ -94,19 +99,33 @@ function NpcCharacter({ npc }: { npc: Npc }) {
   useFrame(() => {
     if (!group.current) return
     const { position, facing } = npc.actor
-    group.current.position.set(position.x, 0, position.z)
-    group.current.rotation.y = characterYaw(facing, GLTF_FACING_OFFSET)
+    const seat = world.seatOf(npc.actor)
 
-    const moving = isMoving(npc.actor)
-    setWalking((prev) => (prev === moving ? prev : moving))
+    group.current.position.set(position.x, 0, position.z)
+    group.current.rotation.y = characterYaw(seat?.facing ?? facing, GLTF_FACING_OFFSET)
+
+    const next: Posture = isMoving(npc.actor) ? 'walk' : seat ? 'sit' : 'stand'
+    setPosture((prev) => (prev === next ? prev : next))
+    const height = seat?.height ?? null
+    setSeatHeight((prev) => (prev === height ? prev : height))
   })
+
+  /*
+   * Подпись едет вниз вместе с севшим. Высота таза у человека — 0.47
+   * роста (тот же канон, по которому собран капсульный человечек), и
+   * ровно на разницу между ней и сиденьем опускается вся фигура.
+   */
+  const labelY =
+    appearance.height +
+    LABEL_LIFT -
+    (seatHeight === null ? 0 : seatedDrop(appearance.height * HIP_SHARE, seatHeight))
 
   return (
     <group ref={group} onClick={dragAwareClick(handleClick)}>
-      <Character appearance={appearance} walking={walking} />
+      <Character appearance={appearance} posture={posture} seatHeight={seatHeight} />
       {label && (
         <Html
-          position={[0, appearance.height + LABEL_LIFT, 0]}
+          position={[0, labelY, 0]}
           center
           distanceFactor={LABEL_SCALE}
           pointerEvents="none"

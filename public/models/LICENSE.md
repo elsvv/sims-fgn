@@ -31,7 +31,7 @@ Dedication)**. Авторы отказались от прав: коммерче
 > This content is free to use in personal, educational and commercial projects.
 > Support us by crediting Kenney or www.kenney.nl (this is not mandatory)
 
-Взято девять файлов из ста сорока — ровно столько, сколько предметов
+Взято десять файлов из ста сорока — ровно столько, сколько предметов
 в каталоге `src/content/props/propCatalog.ts`. Соответствие «предмет —
 файл» описано там же, в поле `model` каждого предмета, а обоснование
 выбора — в `research/assets-props.md`.
@@ -39,6 +39,7 @@ Dedication)**. Авторы отказались от прав: коммерче
 | Файл | Чем стал в игре |
 |---|---|
 | `desk.glb` | парта |
+| `chair.glb` | стул в аудитории |
 | `paneling.glb` | доска в аудитории и доска объявлений |
 | `kitchenFridgeSmall.glb` | пурифайер |
 | `kitchenFridge.glb` | автомат с едой |

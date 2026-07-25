@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { findApproachCell } from '../../sim/interaction/approach'
 import { findPath } from '../../sim/nav/findPath'
 import { validateRooms } from '../../sim/world/FloorPlan'
+import { seatFacing } from '../../sim/world/seats'
 import { NavGrid } from '../../sim/world/NavGrid'
 import { PROP_CATALOG } from '../props/propCatalog'
 import { SCHEDULE } from '../study/courses'
@@ -225,6 +226,77 @@ describe('обстановка второго этажа расставлена 
       const approach = findApproachCell(withProps, { col: prop.col, row: prop.row })
       expect(approach, `${prop.id}: подойти негде`).not.toBeNull()
       expect(withProps.isWalkable(approach!), `${prop.id}: подход непроходим`).toBe(true)
+    }
+  })
+})
+
+/**
+ * Проверки того, что на паре есть на чём сидеть.
+ *
+ * Человек, стоящий столбом вплотную к парте всю лекцию, читается как
+ * ошибка игры, а не как студент. Сидение держится на трёх вещах сразу:
+ * стул стоит там, куда игра приводит человека; его клетка проходима,
+ * иначе на него не встать; повёрнут он к доске, потому что сидящий
+ * разворачивается вместе с ним.
+ */
+describe('в аудитории есть на чём сидеть', () => {
+  const grid = new NavGrid(FLOOR_A2)
+  const desks = FLOOR_A2.props.filter((prop) => prop.kind === 'desk')
+  const chairs = FLOOR_A2.props.filter((prop) => prop.kind === 'chair')
+
+  it('в аудиториях вообще есть парты и стулья', () => {
+    expect(desks.length).toBeGreaterThan(0)
+    expect(chairs.length).toBe(desks.length)
+  })
+
+  it('стул стоит там, куда игра приводит человека к парте', () => {
+    // Клетка подхода к парте — та, на которую персонажа отправляет
+    // «Сесть и слушать». Стул обязан стоять именно на ней, иначе
+    // человек сядет в воздух рядом со стулом.
+    const seats = new Set(chairs.map((chair) => `${chair.col},${chair.row}`))
+    for (const desk of desks) {
+      const approach = findApproachCell(grid, { col: desk.col, row: desk.row })
+      expect(approach, `${desk.id}: подойти негде`).not.toBeNull()
+      expect(
+        seats.has(`${approach!.col},${approach!.row}`),
+        `${desk.id}: подходят к клетке ${approach!.col},${approach!.row}, а стула там нет`,
+      ).toBe(true)
+    }
+  })
+
+  it('на каждый стул можно встать', () => {
+    for (const chair of chairs) {
+      expect(chair.blocks ?? false, `${chair.id} перекрыл свою клетку`).toBe(false)
+      expect(grid.isWalkable({ col: chair.col, row: chair.row }), chair.id).toBe(true)
+    }
+  })
+
+  it('у каждого стула есть высота сиденья', () => {
+    for (const chair of chairs) {
+      const seat = PROP_CATALOG[chair.kind]?.seat
+      expect(seat, `${chair.id}: не на чем сидеть`).toBeDefined()
+      expect(seat!.height, chair.id).toBeGreaterThan(0)
+      expect(seat!.height, chair.id).toBeLessThan(PROP_CATALOG[chair.kind]!.size.h)
+    }
+  })
+
+  it('сидящий смотрит на доску, а не в стену', () => {
+    for (const chair of chairs) {
+      const room = grid.roomAt({ col: chair.col, row: chair.row })
+      expect(room, `${chair.id} стоит вне помещения`).not.toBeNull()
+
+      const board = FLOOR_A2.props.find(
+        (prop) => prop.kind === 'whiteboard' && grid.roomAt({ col: prop.col, row: prop.row })?.id === room!.id,
+      )
+      expect(board, `${chair.id}: в ${room!.id} нет доски`).toBeDefined()
+
+      // Взгляд из симуляции — atan2(dz, dx); доска севернее стула,
+      // значит взгляд обязан иметь отрицательную составляющую по z.
+      const facing = seatFacing(chair.rotation)
+      const toBoard = board!.row - chair.row
+      expect(Math.sign(Math.sin(facing)), `${chair.id} сидит спиной к доске`).toBe(
+        Math.sign(toBoard),
+      )
     }
   })
 })

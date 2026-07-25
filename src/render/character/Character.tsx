@@ -2,6 +2,7 @@ import { Suspense } from 'react'
 import type { CharacterAppearance } from '../../shared/appearance'
 import { ModelErrorBoundary } from '../ModelErrorBoundary'
 import { GltfCharacter } from './GltfCharacter'
+import type { Posture } from './posture'
 import { ProceduralCharacter } from './ProceduralCharacter'
 
 /**
@@ -27,16 +28,29 @@ import { ProceduralCharacter } from './ProceduralCharacter'
  */
 export function Character({
   appearance,
-  walking,
+  posture,
+  seatHeight = null,
 }: {
   appearance: CharacterAppearance
-  walking: boolean
+  posture: Posture
+  /** Высота сиденья под человеком в метрах. null — человек не на стуле. */
+  seatHeight?: number | null
 }) {
-  const fallback = <ProceduralCharacter appearance={appearance} walking={walking} />
+  const fallback = (
+    <ProceduralCharacter
+      appearance={appearance}
+      posture={posture}
+      seatHeight={seatHeight}
+    />
+  )
   return (
     <ModelErrorBoundary what="человек" fallback={fallback}>
       <Suspense fallback={fallback}>
-        <GltfCharacter appearance={appearance} walking={walking} />
+        <GltfCharacter
+          appearance={appearance}
+          posture={posture}
+          seatHeight={seatHeight}
+        />
       </Suspense>
     </ModelErrorBoundary>
   )

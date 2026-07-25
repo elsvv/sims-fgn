@@ -2,6 +2,14 @@ import { useFrame } from '@react-three/fiber'
 import { useRef } from 'react'
 import type { Group } from 'three'
 import type { CharacterAppearance } from '../../shared/appearance'
+import {
+  blendTowards,
+  breathPhase,
+  BREATH_LIFT,
+  seatedDrop,
+  seatedLegAngles,
+  type Posture,
+} from './posture'
 
 /**
  * Процедурная модель человека из примитивов. Модель смотрит вдоль +Z.
@@ -32,16 +40,24 @@ const EYE_COLOR = '#20242b'
 
 export function ProceduralCharacter({
   appearance,
-  walking,
+  posture,
+  seatHeight,
 }: {
   appearance: CharacterAppearance
-  walking: boolean
+  posture: Posture
+  /** Высота сиденья под человеком в метрах или null, если он не на стуле. */
+  seatHeight: number | null
 }) {
   const body = useRef<Group>(null)
   const legLeft = useRef<Group>(null)
   const legRight = useRef<Group>(null)
+  const kneeLeft = useRef<Group>(null)
+  const kneeRight = useRef<Group>(null)
   const armLeft = useRef<Group>(null)
   const armRight = useRef<Group>(null)
+  const sitting = useRef(0)
+  const phase = useRef(Math.random())
+  const walking = posture === 'walk'
 
   const h = appearance.height
   const build = appearance.build
@@ -87,17 +103,52 @@ export function ProceduralCharacter({
   const hairRadius =
     headRadius * (appearance.hairStyle === 'medium' ? 1.09 : 1.04)
 
-  useFrame((state) => {
-    const phase = state.clock.elapsedTime * 8
-    const swing = walking ? Math.sin(phase) * 0.5 : 0
-    if (legLeft.current) legLeft.current.rotation.x = swing
-    if (legRight.current) legRight.current.rotation.x = -swing
-    if (armLeft.current) armLeft.current.rotation.x = -swing * 0.55
-    if (armRight.current) armRight.current.rotation.x = swing * 0.55
+  /*
+   * Сидение у капсульного человечка ровно то же, что и у модели, и
+   * считается той же функцией: бедро вперёд настолько, чтобы отвесная
+   * голень достала до пола, корпус вниз на разницу высот таза. Отличается
+   * только то, к чему это прикладывается, — три группы примитивов вместо
+   * шестидесяти двух костей.
+   */
+  const seat = useRef<{ thigh: number; shin: number; drop: number } | null>(null)
+
+  useFrame((state, delta) => {
+    if (seatHeight !== null) {
+      const drop = seatedDrop(hipY, seatHeight)
+      const angles = seatedLegAngles({ hip: hipY - drop, ankle: footHeight, thigh, shin })
+      // Запомненное сиденье переживает вставание: пока человек
+      // распрямляется, поза ещё нужна, а стула под ним уже нет.
+      seat.current = { thigh: angles.thigh, shin: angles.shin, drop }
+    }
+
+    const step = state.clock.elapsedTime * 8
+    const swing = walking ? Math.sin(step) * 0.5 : 0
+    const weight = (sitting.current = blendTowards(
+      sitting.current,
+      posture === 'sit' && seatHeight !== null ? 1 : 0,
+      delta,
+    ))
+    const stand = 1 - weight
+    const seated = seat.current
+    const thighTurn = seated ? -seated.thigh * weight : 0
+    const kneeTurn = seated ? (seated.thigh + seated.shin) * weight : 0
+    const seatDrop = seated ? seated.drop : 0
+
+    if (legLeft.current) legLeft.current.rotation.x = swing * stand + thighTurn
+    if (legRight.current) legRight.current.rotation.x = -swing * stand + thighTurn
+    if (kneeLeft.current) kneeLeft.current.rotation.x = kneeTurn
+    if (kneeRight.current) kneeRight.current.rotation.x = kneeTurn
+    if (armLeft.current) armLeft.current.rotation.x = -swing * 0.55 * stand
+    if (armRight.current) armRight.current.rotation.x = swing * 0.55 * stand
+
     // Шаг подкидывает корпус вверх дважды за цикл. Амплитуда крошечная:
-    // это признак жизни, а не прыжки.
+    // это признак жизни, а не прыжки. Стоящего и сидящего вместо шага
+    // качает дыхание — иначе они замирают совершенными истуканами.
     if (body.current) {
-      body.current.position.y = walking ? Math.abs(Math.sin(phase)) * h * 0.008 : 0
+      const bounce = walking
+        ? Math.abs(Math.sin(step)) * h * 0.008
+        : BREATH_LIFT * breathPhase(state.clock.elapsedTime, phase.current)
+      body.current.position.y = bounce - seatDrop * weight
     }
   })
 
@@ -105,27 +156,34 @@ export function ProceduralCharacter({
     <group ref={body}>
       {/* --- Ноги со ступнёй, приделанной к голени: шагает нога целиком --- */}
       {[
-        { ref: legLeft, x: -legX },
-        { ref: legRight, x: legX },
+        { ref: legLeft, knee: kneeLeft, x: -legX },
+        { ref: legRight, knee: kneeRight, x: legX },
       ].map((leg, index) => (
         <group key={index} ref={leg.ref} position={[leg.x, hipY, 0]}>
           <mesh position={[0, -thigh / 2, 0]} castShadow>
             <capsuleGeometry args={[legRadius, thigh - legRadius * 2, 4, 10]} />
             <meshStandardMaterial color={appearance.bottom} roughness={0.9} />
           </mesh>
-          <mesh position={[0, -thigh - shin / 2, 0]} castShadow>
-            <capsuleGeometry
-              args={[legRadius * 0.78, shin - legRadius * 1.56, 4, 10]}
-            />
-            <meshStandardMaterial color={appearance.bottom} roughness={0.9} />
-          </mesh>
-          <mesh
-            position={[0, -legSpan - footHeight / 2, footLength * 0.25]}
-            castShadow
-          >
-            <boxGeometry args={[legRadius * 1.75, footHeight, footLength]} />
-            <meshStandardMaterial color={SHOE_COLOR} roughness={0.7} />
-          </mesh>
+          {/*
+            Колено. Появилось вместе с сидением: на цельной ноге сесть
+            нельзя, можно только вытянуть её вперёд, как на полу.
+            Шагает по-прежнему нога целиком — колено при ходьбе не гнётся.
+          */}
+          <group ref={leg.knee} position={[0, -thigh, 0]}>
+            <mesh position={[0, -shin / 2, 0]} castShadow>
+              <capsuleGeometry
+                args={[legRadius * 0.78, shin - legRadius * 1.56, 4, 10]}
+              />
+              <meshStandardMaterial color={appearance.bottom} roughness={0.9} />
+            </mesh>
+            <mesh
+              position={[0, -shin - footHeight / 2, footLength * 0.25]}
+              castShadow
+            >
+              <boxGeometry args={[legRadius * 1.75, footHeight, footLength]} />
+              <meshStandardMaterial color={SHOE_COLOR} roughness={0.7} />
+            </mesh>
+          </group>
         </group>
       ))}
 

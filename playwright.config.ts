@@ -1,6 +1,14 @@
 import { defineConfig, devices } from '@playwright/test'
 
-const PORT = 5173
+/**
+ * Порт можно переназначить снаружи: `PORT=5180 npm run e2e`.
+ *
+ * Не прихоть. Ниже стоит `reuseExistingServer`, и если на 5173 висит
+ * чужой dev-сервер — а он там висит у всякого, кто держит открытым
+ * соседний проект на vite, — тесты молча уйдут смотреть чужое приложение
+ * и будут падать с «нет канваса». Порт наружу дешевле, чем это выяснять.
+ */
+const PORT = Number(process.env.PORT ?? 5173)
 const BASE_URL = `http://localhost:${PORT}`
 
 /**
@@ -37,7 +45,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'npm run dev',
+    command: `npm run dev -- --port ${PORT} --strictPort`,
     url: BASE_URL,
     reuseExistingServer: true,
     timeout: 180_000,

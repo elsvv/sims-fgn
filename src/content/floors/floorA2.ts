@@ -64,11 +64,24 @@ export const FLOOR_A2: FloorPlan = {
     { id: 'a204-desk-2', kind: 'desk', col: 4, row: 3, rotation: 0, blocks: true },
     { id: 'a204-desk-3', kind: 'desk', col: 6, row: 3, rotation: 0, blocks: true },
 
+    /*
+     * Стулья. Стоят южнее своих парт — на тех самых клетках, куда игра
+     * приводит человека, решившего партой воспользоваться. Клетку они
+     * не перекрывают: на стул надо встать, чтобы на него сесть.
+     * Поворот на пол-оборота — спинкой к двери, лицом к доске.
+     */
+    { id: 'a204-chair-1', kind: 'chair', col: 2, row: 4, rotation: Math.PI, blocks: false },
+    { id: 'a204-chair-2', kind: 'chair', col: 4, row: 4, rotation: Math.PI, blocks: false },
+    { id: 'a204-chair-3', kind: 'chair', col: 6, row: 4, rotation: Math.PI, blocks: false },
+
     // Аудитория А-206
     { id: 'a206-board', kind: 'whiteboard', col: 18, row: 1, rotation: 0, blocks: true },
     { id: 'a206-desk-1', kind: 'desk', col: 16, row: 3, rotation: 0, blocks: true },
     { id: 'a206-desk-2', kind: 'desk', col: 18, row: 3, rotation: 0, blocks: true },
     { id: 'a206-desk-3', kind: 'desk', col: 20, row: 3, rotation: 0, blocks: true },
+    { id: 'a206-chair-1', kind: 'chair', col: 16, row: 4, rotation: Math.PI, blocks: false },
+    { id: 'a206-chair-2', kind: 'chair', col: 18, row: 4, rotation: Math.PI, blocks: false },
+    { id: 'a206-chair-3', kind: 'chair', col: 20, row: 4, rotation: Math.PI, blocks: false },
 
     // Коридор
     { id: 'notices-1', kind: 'noticeBoard', col: 3, row: 6, rotation: 0, blocks: true },

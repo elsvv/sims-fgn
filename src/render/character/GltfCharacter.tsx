@@ -8,6 +8,7 @@ import {
   BoxGeometry,
   Mesh,
   MeshStandardMaterial,
+  Quaternion,
   Skeleton,
   SkinnedMesh,
   Vector3,
@@ -41,6 +42,15 @@ import {
   walkTimeScale,
   type SlotMaterial,
 } from './gltfAssembly'
+import {
+  animationStepSeconds,
+  blendTowards,
+  breathPhase,
+  BREATH_BEND,
+  BREATH_LIFT,
+  type Posture,
+} from './posture'
+import { buildSeatedPose, type SeatedPose } from './seatedPose'
 
 /**
  * Человек, собранный из моделей набора Quaternius.
@@ -62,6 +72,13 @@ import {
  * порядок костей базы. Поэтому скелет для донора пересобирается в его
  * собственном порядке из костей базы: наивная привязка к скелету базы
  * рвёт меш в лапшу.
+ *
+ * Поз три: стоит, идёт, сидит. Первые две — клипы набора (`Idle`, `Walk`)
+ * с кроссфейдом между ними. Третьей в наборе нет и взять её негде (см.
+ * seatedPose.ts), поэтому она считается по костям и подмешивается поверх
+ * клипа по весу: пока вес идёт от нуля к единице, человек садится, пока
+ * от единицы к нулю — встаёт. У полностью севшего проигрыватель не
+ * работает вовсе: поза статическая, живость даёт дыхание.
  */
 
 /** Длительность перехода между стоянием и ходьбой, в секундах. */
@@ -73,6 +90,8 @@ const WEAPON_NAMES = /^(Pistol|Sword)$/
 interface CharacterBuild {
   root: Group
   mixer: AnimationMixer
+  /** Кости фигуры по именам. Нужны позе сидения: её никакой клип не задаёт. */
+  bones: Map<string, Bone>
   /**
    * Клипы, а не готовые действия.
    *
@@ -89,6 +108,8 @@ interface CharacterBuild {
   walk: AnimationClip | null
   /** Во сколько раз фигура ужата или растянута по высоте. */
   scale: number
+  /** Высота корня фигуры в файле. От неё отсчитывается посадка на стул. */
+  baseY: number
   dispose: () => void
 }
 
@@ -331,7 +352,9 @@ function buildCharacter(
   return {
     root,
     mixer,
+    bones,
     scale,
+    baseY: root.position.y,
     idle: clipNamed(IDLE_CLIP),
     walk: clipNamed(WALK_CLIP),
     dispose: () => {
@@ -347,12 +370,19 @@ function buildCharacter(
   }
 }
 
+/** Черновики, чтобы не создавать объектов three в каждом кадре. */
+const scratchPosition = new Vector3()
+const scratchTurn = new Quaternion()
+
 export function GltfCharacter({
   appearance,
-  walking,
+  posture,
+  seatHeight,
 }: {
   appearance: CharacterAppearance
-  walking: boolean
+  posture: Posture
+  /** Высота сиденья под человеком в метрах или null, если он не на стуле. */
+  seatHeight: number | null
 }) {
   const urls = useMemo(() => characterModelUrls(appearance.model), [appearance.model])
   const loaded = useGLTF(urls)
@@ -362,6 +392,8 @@ export function GltfCharacter({
     [loaded, urls, appearance],
   )
 
+  const walking = posture === 'walk'
+
   /*
    * Сдвиг фазы. Шесть человек, запущенных одним клипом в один и тот же
    * момент, дышат и переступают синхронно — этаж превращается в
@@ -369,7 +401,24 @@ export function GltfCharacter({
    */
   const phase = useRef(Math.random())
 
-  useEffect(() => () => built.dispose(), [built])
+  /**
+   * Поза сидения считается по костям — и потому считается один раз,
+   * когда человек в первый раз садится, а не при сборке фигуры: садятся
+   * далеко не все, а стоящему эта работа не нужна. Пересчитывается,
+   * только если человек пересел на сиденье другой высоты.
+   */
+  const seated = useRef<{ height: number; pose: SeatedPose | null } | null>(null)
+  /** Насколько человек уже сел: 0 — стоит, 1 — сидит. */
+  const sitting = useRef(0)
+  /** Время, накопленное с прошлого пересчёта анимации у дальних людей. */
+  const pending = useRef(0)
+
+  useEffect(() => {
+    seated.current = null
+    sitting.current = 0
+    pending.current = 0
+    return () => built.dispose()
+  }, [built])
 
   useEffect(() => {
     const clip = walking ? built.walk : built.idle
@@ -384,7 +433,67 @@ export function GltfCharacter({
     }
   }, [walking, built])
 
-  useFrame((_, delta) => built.mixer.update(delta))
+  useFrame((state, delta) => {
+    const root = built.root
+    const wanted = posture === 'sit' && seatHeight !== null
+
+    if (wanted && seated.current?.height !== seatHeight) {
+      seated.current = {
+        height: seatHeight,
+        pose: buildSeatedPose({
+          root,
+          bones: built.bones,
+          reference: built.idle,
+          seatHeight,
+          scale: built.scale,
+        }),
+      }
+    }
+    const pose = seated.current?.pose ?? null
+    const weight = (sitting.current = blendTowards(
+      sitting.current,
+      wanted && pose ? 1 : 0,
+      delta,
+    ))
+
+    /*
+     * Сидящий не нуждается в проигрывателе вовсе: поза статическая,
+     * а живость ему даёт дыхание. Это же и самая дешёвая экономия из
+     * возможных — шестьдесят две кости, которые не надо интерполировать.
+     */
+    if (weight < 1) {
+      pending.current += delta
+      const step = animationStepSeconds(
+        state.camera.position.distanceTo(root.getWorldPosition(scratchPosition)),
+      )
+      if (pending.current >= step) {
+        built.mixer.update(pending.current)
+        pending.current = 0
+      }
+    } else {
+      pending.current = 0
+    }
+
+    if (!pose || weight === 0) {
+      root.position.y = built.baseY
+      return
+    }
+
+    for (const posed of pose.bones) posed.bone.quaternion.slerp(posed.quaternion, weight)
+    for (const foot of pose.feet) {
+      foot.bone.quaternion.slerp(foot.quaternion, weight)
+      foot.bone.position.copy(foot.origin).lerp(foot.position, weight)
+    }
+
+    // Дыхание. Единственное движение сидящего — и потому единственное,
+    // что отличает человека на стуле от манекена на стуле.
+    const breath = breathPhase(state.clock.elapsedTime, phase.current) * weight
+    if (pose.breath) {
+      scratchTurn.setFromAxisAngle(pose.breath.axis, BREATH_BEND * breath)
+      pose.breath.bone.quaternion.premultiply(scratchTurn)
+    }
+    root.position.y = built.baseY + BREATH_LIFT * breath - pose.drop * weight
+  })
 
   /*
    * dispose={null}: геометрия и исходные материалы принадлежат кэшу
