@@ -66,13 +66,26 @@ const MARKER_LENGTH: Record<Exclude<Magnitude, 'none'>, number> = {
 }
 
 /**
+ * Стрелки по уже посчитанным направлению и величине.
+ *
+ * Величина приходит параметром, а не считается здесь из дельты, потому что
+ * шкал в игре две. Одна реплика и накопленные за модуль отношения меряются
+ * по-разному: десять единиц уважения за одну фразу — много, а десять единиц
+ * уважения за весь модуль — почти ничего. Указатель при этом обязан быть
+ * один и тот же, иначе панель людей и окно разговора начнут спорить.
+ * Вторая шкала живёт в social/Relationship.ts.
+ */
+export function markerFor(direction: Direction, magnitude: Magnitude): string {
+  if (magnitude === 'none' || direction === 'flat') return ARROWS.flat
+  return ARROWS[direction].repeat(MARKER_LENGTH[magnitude])
+}
+
+/**
  * Указатель направления: видимый, но неброский.
  * Одна стрелка — чуть заметно, три — сильно.
  */
 export function directionMarker(delta: number): string {
-  const magnitude = magnitudeOf(delta)
-  if (magnitude === 'none') return ARROWS.flat
-  return ARROWS[directionOf(delta)].repeat(MARKER_LENGTH[magnitude])
+  return markerFor(directionOf(delta), magnitudeOf(delta))
 }
 
 export type ChangeDimension = 'respect' | 'affection' | 'romance' | 'faction' | 'skill'

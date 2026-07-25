@@ -33,7 +33,12 @@ import {
   type WeekendOption,
   type WeekendReport,
 } from './daily/Weekend'
-import type { ConsequenceChange, ConsequenceReport, DialogueTone } from './dialogue/Consequences'
+import type {
+  ChangeSet,
+  ConsequenceChange,
+  ConsequenceReport,
+  DialogueTone,
+} from './dialogue/Consequences'
 import { TONE_LABELS, toneHint } from './dialogue/Consequences'
 import {
   buildEpilogue,
@@ -48,7 +53,6 @@ import { isAvailable } from './dialogue/Dialogue'
 import {
   Conversation,
   type ChainCatalog,
-  type ChainEffects,
   type ChainNode,
   type ConversationOutcome,
 } from './dialogue/DialogueChain'
@@ -1153,7 +1157,13 @@ export class World {
     this.activeDialogue = null
 
     const context = this.dialogueContext(npc.id)
-    const talk = new Conversation(entry.chain, context, { skillLabels: SKILL_LABELS })
+    // Множитель близости взглядов уходит в разговор, а не остаётся у мира:
+    // разговор описывает игроку свои же последствия, и считать он их обязан
+    // по тому, что применится, а не по тому, что объявлено в реплике.
+    const talk = new Conversation(entry.chain, context, {
+      skillLabels: SKILL_LABELS,
+      respectMultiplier: respectMultiplier(this.teacherFor(npc.id), this.faction),
+    })
     const node = talk.start()
     this.markNodeVisited(node.id)
 
@@ -1190,7 +1200,7 @@ export class World {
     if (!option) return null
 
     const step = active.talk.choose(optionId)
-    this.applyChainEffects(active.npcId, option.effects)
+    this.applyChainStep(active.npcId, step.applied, option.effects.moodletId)
     // Узел, в который перешли, тоже пройден: концовка сцены — такой же узел,
     // и именно по ней потом узнают, чем у этих двоих всё кончилось.
     this.markNodeVisited(option.next)
@@ -1291,27 +1301,27 @@ export class World {
   }
 
   /**
-   * Применяет эффекты реплики цепочки — теми же правилами, что и короткий
-   * разговор: прирост уважения проходит через близость взглядов, потеря —
-   * в полном размере, навык через общий замедлитель прокачки.
+   * Применяет шаг цепочки — ровно те изменения, которые разговор уже
+   * посчитал и уже описал игроку словами. Второй раз мир их не считает:
+   * два счёта одного и того же — это ровно тот случай, когда игрок читает
+   * «уважение сильно выросло», а в отношениях оказывается втрое меньше.
+   * Правило множителя живёт в одном месте — social/Conversation.ts, —
+   * и разговор проходит через него на входе, см. startChainDialogue.
    *
    * Романтическое измерение цепочек в мир пока не приходит: оно включится
    * вместе с однокурсниками. У преподавателей его нет и быть не может —
    * за этим следит validateChain, см. sim/social/Romance.ts.
    */
-  private applyChainEffects(npcId: string, effects: ChainEffects): void {
-    const multiplier = respectMultiplier(this.teacherFor(npcId), this.faction)
-    const gains = resolveEffects(effects, multiplier)
-
+  private applyChainStep(npcId: string, applied: ChangeSet, moodletId?: string): void {
     this.relationships.adjust(npcId, {
-      respect: gains.respect,
-      affection: gains.affection,
+      respect: applied.respect ?? 0,
+      affection: applied.affection ?? 0,
     })
-    this.faction = clampFaction(this.faction + gains.faction)
-    if (gains.skill && isSkillId(gains.skill.id)) {
-      this.trainSkill(gains.skill.id, gains.skill.amount)
+    this.faction = clampFaction(this.faction + (applied.faction ?? 0))
+    if (applied.skill && isSkillId(applied.skill.id)) {
+      this.trainSkill(applied.skill.id, applied.skill.amount)
     }
-    if (effects.moodletId) this.addMoodletById(effects.moodletId)
+    if (moodletId) this.addMoodletById(moodletId)
   }
 
   /**

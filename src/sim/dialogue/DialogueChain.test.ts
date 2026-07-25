@@ -402,3 +402,76 @@ describe('ход разговора', () => {
     ])
   })
 })
+
+/*
+ * Близость взглядов умножает прирост уважения — и разговор обязан об этом
+ * знать. Пока множитель жил только в мире, реплика объявляла десятку,
+ * применялось два с половиной, а игрок читал «заметно выросло» в обоих
+ * случаях. Ниже — проверки того, что слова считаются по применённому.
+ */
+describe('близость взглядов слышна в словах', () => {
+  /** Что игрок прочтёт после одного и того же ответа при таком множителе. */
+  function consequenceAt(multiplier: number): string {
+    const talk = new Conversation(makeChain(), CONTEXT, { respectMultiplier: multiplier })
+    talk.start()
+    return talk.choose('plain').consequence.text
+  }
+
+  it('своему и чужому одна и та же реплика описывается разными словами', () => {
+    // Восемь единиц уважения: у своего это двенадцать и «сильно»,
+    // у чужого — двойка и «чуть заметно».
+    const own = consequenceAt(1.5)
+    const stranger = consequenceAt(0.25)
+    expect(own).toContain('Уважение сильно выросло')
+    expect(stranger).toContain('Уважение чуть заметно выросло')
+    expect(own).not.toBe(stranger)
+  })
+
+  it('без множителя описание считается по объявленному', () => {
+    expect(consequenceAt(1)).toContain('Уважение заметно выросло')
+  })
+
+  it('применённое отдаётся наружу и совпадает с описанным', () => {
+    const talk = new Conversation(makeChain(), CONTEXT, { respectMultiplier: 0.25 })
+    talk.start()
+    const step = talk.choose('plain')
+    expect(step.applied.respect).toBeCloseTo(2, 6)
+    const described = step.consequence.changes.find((item) => item.dimension === 'respect')
+    expect(described?.delta).toBeCloseTo(step.applied.respect ?? 0, 6)
+  })
+
+  it('потеря уважения множителю не подчиняется', () => {
+    const talk = new Conversation(makeChain(), CONTEXT, { respectMultiplier: 0.25 })
+    talk.start()
+    talk.choose('plain')
+    expect(talk.choose('fold').applied.respect).toBe(-8)
+  })
+
+  it('итог разговора сходится с тем, что игрок читал по дороге', () => {
+    const talk = new Conversation(makeChain(), CONTEXT, { respectMultiplier: 0.25 })
+    talk.start()
+    const first = talk.choose('plain').applied.respect ?? 0
+    const step = talk.choose('hold')
+    const second = step.applied.respect ?? 0
+    expect(step.outcome?.totals.respect).toBeCloseTo(first + second, 6)
+  })
+
+  it('сводка у своего и у чужого тоже разная', () => {
+    function closingAt(multiplier: number): string {
+      const talk = new Conversation(makeChain(), CONTEXT, { respectMultiplier: multiplier })
+      talk.start()
+      talk.choose('plain')
+      return talk.choose('hold').outcome?.report.closing ?? ''
+    }
+    expect(closingAt(1.5)).not.toBe(closingAt(0.25))
+    expect(closingAt(1.5)).toContain('уважение сильно выросло')
+    expect(closingAt(0.25)).toContain('уважение заметно выросло')
+  })
+
+  it('симпатия и шкала традиций остаются как объявлено', () => {
+    const talk = new Conversation(makeChain(), CONTEXT, { respectMultiplier: 0.25 })
+    talk.start()
+    talk.choose('plain')
+    expect(talk.choose('fold').applied.affection).toBe(-6)
+  })
+})

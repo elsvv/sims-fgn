@@ -1713,6 +1713,87 @@ describe('World: эффекты многошаговой сцены', () => {
   })
 })
 
+/*
+ * Слова о последствиях обязаны совпадать с последствиями.
+ *
+ * Множитель близости взглядов умножает прирост уважения, и до починки
+ * разговор об этом не знал: реплика объявляла десятку, у преподавателя
+ * с другого полюса шкалы применялось два с половиной, а игрок в обоих
+ * случаях читал одно и то же.
+ */
+describe('World: описание последствий считается по применённому', () => {
+  /** Та же сцена, слово в слово, но у преподавателя с другого полюса. */
+  function chainFor(speakerId: string): DialogueChainData {
+    const copy = JSON.parse(JSON.stringify(CHAIN)) as DialogueChainData
+    copy.id = `у-автомата-${speakerId}`
+    copy.speakerId = speakerId
+    for (const node of copy.nodes) node.speakerId = speakerId
+    return copy
+  }
+
+  const TWO_TEACHERS: ChainCatalog = {
+    'у-континентального': { chain: chainFor('continental'), room: 'коридор' },
+    'у-аналитика': { chain: chainFor('analytic'), room: 'коридор' },
+  }
+
+  /** Мир, в котором игрок стоит вплотную к нужному собеседнику. */
+  function worldNear(spot: { col: number; row: number }, faction: number): World {
+    const world = makeChainWorld(spot, TWO_TEACHERS)
+    world.faction = faction
+    return world
+  }
+
+  /** Что игрок прочтёт после одной и той же реплики у этого преподавателя. */
+  function consequenceOf(chainId: string, spot: { col: number; row: number }): string {
+    const world = worldNear(spot, 85)
+    expect(world.startChainDialogue(chainId), chainId).toBe(true)
+    return world.chooseChainOption('plain')?.consequence?.text ?? ''
+  }
+
+  it('одна и та же реплика у своего и у чужого описывается разными словами', () => {
+    // Континентальный студент (+85) стоит на позиции Михайловского
+    // и на другом конце шкалы от Долгорукова.
+    const own = consequenceOf('у-континентального', IN_CORRIDOR)
+    const stranger = consequenceOf('у-аналитика', NEXT_TO_ANALYTIC)
+
+    expect(own).toContain('Уважение сильно выросло')
+    expect(stranger).toContain('Уважение чуть заметно выросло')
+    expect(own).not.toBe(stranger)
+  })
+
+  it('слова сходятся с тем, что стало с отношениями', () => {
+    const world = worldNear(NEXT_TO_ANALYTIC, 85)
+    world.startChainDialogue('у-аналитика')
+    const step = world.chooseChainOption('plain')
+
+    const described = step?.consequence?.changes.find((item) => item.dimension === 'respect')
+    const applied = world.relationships.get('teacher-analytic').respect
+    expect(described?.delta).toBeCloseTo(applied, 6)
+    // Объявлено в реплике десять — применилось заметно меньше.
+    expect(applied).toBeLessThan(10)
+  })
+
+  it('итоговая сводка сходится с накопленным уважением', () => {
+    const world = worldNear(NEXT_TO_ANALYTIC, 85)
+    world.startChainDialogue('у-аналитика')
+    world.chooseChainOption('plain')
+    world.continueChainDialogue()
+    const finished = world.chooseChainOption('finish-good')
+
+    const total = finished?.outcome?.changes.find((item) => item.dimension === 'respect')
+    expect(total?.delta).toBeCloseTo(world.relationships.get('teacher-analytic').respect, 6)
+  })
+
+  it('множитель применяется один раз, а не дважды', () => {
+    const world = worldNear(IN_CORRIDOR, 85)
+    world.startChainDialogue('у-континентального')
+    world.chooseChainOption('plain')
+    // Своему десятка приносит полторы: множитель ровно один, и он же
+    // описан словами. Двойной счёт дал бы двадцать две с половиной.
+    expect(world.relationships.get('teacher-continental').respect).toBeCloseTo(15, 6)
+  })
+})
+
 describe('World: сцена остаётся в памяти', () => {
   it('начатая сцена запоминается с первого же узла', () => {
     const world = makeChainWorld()

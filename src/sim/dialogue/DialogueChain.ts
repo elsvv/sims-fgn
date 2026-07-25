@@ -1,3 +1,4 @@
+import { resolveEffects } from '../social/Conversation'
 import { canRomance, romanceForbiddenReason, type PersonProfile } from '../social/Romance'
 import {
   addChanges,
@@ -5,6 +6,7 @@ import {
   describeConversation,
   emptyTotals,
   toneHint,
+  type ChangeSet,
   type ConsequenceReport,
   type DialogueTone,
   type EffectTotals,
@@ -350,6 +352,13 @@ export interface ChainStep {
   reply: string
   /** Что произошло между вами — словами, а не числами. */
   consequence: ConsequenceReport
+  /**
+   * Что на самом деле применится к состоянию: объявленные эффекты реплики,
+   * пропущенные через близость взглядов. Ровно эти числа описаны словами
+   * в consequence, и ровно их обязан применить мир — считать их второй раз
+   * у себя ему нельзя, иначе слова и последствия однажды разойдутся.
+   */
+  applied: ChangeSet
   /** Следующий узел — если разговор продолжается. */
   node?: ChainNode
   /** Итог — если разговор кончился. */
@@ -359,6 +368,37 @@ export interface ChainStep {
 export interface ConversationOptions {
   /** Человеческие названия навыков для описания последствий. */
   skillLabels?: SkillLabels
+  /**
+   * Множитель прироста уважения от близости взглядов — см.
+   * social/Conversation.ts. Не указан — единица: собеседник без позиции
+   * на шкале традиций считает по объявленному.
+   *
+   * Разговор обязан знать этот множитель, потому что он же и рассказывает
+   * игроку, что произошло. Реплика объявляет десять единиц уважения,
+   * у преподавателя-антипода применяются две с половиной — и «уважение
+   * сильно выросло» в этом случае просто неправда.
+   */
+  respectMultiplier?: number
+}
+
+/**
+ * Что из объявленных эффектов реплики применится на самом деле.
+ *
+ * Правило множителя целиком лежит в social/Conversation.ts и здесь не
+ * повторяется: прирост уважения проходит через близость взглядов, потеря
+ * идёт полностью, остальное множителю не подчиняется. Романтический интерес
+ * добавлен сверху — он есть только у цепочек.
+ */
+export function resolveChainEffects(effects: ChainEffects, multiplier: number): ChangeSet {
+  const gains = resolveEffects(effects, multiplier)
+  const changes: ChangeSet = {
+    respect: gains.respect,
+    affection: gains.affection,
+    romance: effects.romance ?? 0,
+    faction: gains.faction,
+  }
+  if (gains.skill) changes.skill = gains.skill
+  return changes
 }
 
 /**
@@ -372,6 +412,13 @@ export class Conversation {
   private readonly index: Map<string, ChainNode>
   private readonly context: DialogueContext
   private readonly skillLabels: SkillLabels
+  /**
+   * Множитель уважения снят один раз, на входе в сцену, — как и контекст
+   * доступности реплик. Иначе собственный сдвиг по шкале традиций посреди
+   * разговора менял бы цену уже начатого разговора, и два одинаковых ответа
+   * в одной сцене описывались бы разными словами без всякой причины.
+   */
+  private readonly respectMultiplier: number
 
   private nodeId: string | null = null
   private chosen: string[] = []
@@ -388,6 +435,7 @@ export class Conversation {
     this.chain = chain
     this.context = context
     this.skillLabels = options.skillLabels ?? {}
+    this.respectMultiplier = options.respectMultiplier ?? 1
     this.index = new Map(chain.nodes.map((node) => [node.id, node]))
   }
 
@@ -455,15 +503,19 @@ export class Conversation {
       throw new Error(`Разговор зациклился: узел «${next.id}» уже был пройден.`)
     }
 
-    this.totals = addChanges(this.totals, option.effects)
+    // Копится и описывается применённое, а не объявленное: сводка в конце
+    // разговора обязана сойтись с тем, что игрок читал по дороге, а обе —
+    // с тем, что на самом деле стало с отношениями.
+    const applied = resolveChainEffects(option.effects, this.respectMultiplier)
+    this.totals = addChanges(this.totals, applied)
     this.chosen.push(option.id)
     this.visited.add(next.id)
     this.nodeId = next.id
 
-    const consequence = describeChoice(option.consequence, option.effects, this.skillLabels)
+    const consequence = describeChoice(option.consequence, applied, this.skillLabels)
 
     if (!next.ending) {
-      return { reply: option.reply, consequence, node: next }
+      return { reply: option.reply, consequence, applied, node: next }
     }
 
     this.result = {
@@ -477,7 +529,7 @@ export class Conversation {
         this.skillLabels,
       ),
     }
-    return { reply: option.reply, consequence, outcome: this.result }
+    return { reply: option.reply, consequence, applied, outcome: this.result }
   }
 
   outcome(): ConversationOutcome | undefined {
