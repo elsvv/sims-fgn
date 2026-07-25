@@ -1,5 +1,6 @@
 import { TEACHERS } from '../../content/people/teachers'
 import { ANALYTIC, CONTINENTAL } from '../../sim/social/Faction'
+import { standingOf } from '../../sim/social/Relationship'
 import type { RelationshipInfo } from '../../sim/World'
 import { useWorldSnapshot } from '../useWorld'
 
@@ -9,17 +10,37 @@ function nameOf(record: RelationshipInfo): string {
   return TEACHERS[record.teacherId]?.short ?? record.npcId
 }
 
-/** Знак у числа: «+8», «−6», «0». */
-function signed(value: number): string {
-  const rounded = Math.round(value)
-  if (rounded > 0) return `+${rounded}`
-  if (rounded < 0) return `−${Math.abs(rounded)}`
-  return '0'
-}
-
 /** С кем уже что-то произошло. Незнакомых в списке нет — иначе он вечно полон. */
 function isKnown(record: RelationshipInfo): boolean {
-  return Math.round(record.affection) !== 0 || Math.round(record.respect) !== 0
+  return standingOf(record).length > 0
+}
+
+/**
+ * Один человек: фамилия, оценка отношений и по фразе на каждое измерение.
+ *
+ * Ни одного числа. «+8 / −6» — это отчёт для того, кто знает шкалу, а шкалы
+ * у отношений нет ни в жизни, ни в игре: за эти восемь единиц симпатии
+ * игрок нигде не расплачивался и ни с чем их не сравнит. Слова говорят то
+ * же самое и говорят понятно, а величину показывают стрелки — теми же,
+ * какими подписаны последствия реплик в окне разговора.
+ */
+function Person({ record }: { record: RelationshipInfo }) {
+  return (
+    <div className="person">
+      <div className="person__head">
+        <span className="person__name">{nameOf(record)}</span>
+        <span className="person__level">{record.label}</span>
+      </div>
+      {standingOf(record).map((standing) => (
+        <div className="person__standing" key={standing.dimension}>
+          <span className="person__standing-text">{standing.text}</span>
+          <span className={`person__marker person__marker--${standing.direction}`}>
+            {standing.marker}
+          </span>
+        </div>
+      ))}
+    </div>
+  )
 }
 
 /**
@@ -66,15 +87,7 @@ export function PeoplePanel() {
           Вы ещё ни с кем не говорили. Нажмите на преподавателя в коридоре.
         </div>
       ) : (
-        known.map((record) => (
-          <div className="person" key={record.npcId}>
-            <span className="person__name">{nameOf(record)}</span>
-            <span className="person__level">{record.label}</span>
-            <span className="person__scores" title="симпатия и уважение">
-              {signed(record.affection)} / {signed(record.respect)}
-            </span>
-          </div>
-        ))
+        known.map((record) => <Person record={record} key={record.npcId} />)
       )}
     </div>
   )

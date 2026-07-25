@@ -156,25 +156,26 @@
   border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.moodlet {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  font-size: 12px;
-  margin-bottom: 5px;
-}
-
+/*
+ * Модификатор настроения: подпись и вес словами. Вес стоит отдельной
+ * строкой под подписью — подписи здесь длинные («Спор у раковины кончился
+ * темой для курсовой»), и рядом с ними «сильно тянет вниз» уже не помещается.
+ */
+.moodlet { font-size: 12px; margin-bottom: 7px; }
 .moodlet:last-child { margin-bottom: 0; }
-.moodlet__label { flex: 1; min-width: 0; opacity: 0.85; }
+.moodlet__label { display: block; opacity: 0.85; }
 
 .moodlet__mood {
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+  display: block;
+  margin-top: 1px;
+  font-size: 11px;
   font-weight: 600;
+  opacity: 0.85;
 }
 
-.moodlet__mood--good { color: #8fd6a1; }
-.moodlet__mood--bad { color: #e58a83; }
+.moodlet__mood--up { color: #8fd6a1; }
+.moodlet__mood--down { color: #e58a83; }
+.moodlet__mood--flat { opacity: 0.5; }
 .moodlet__empty { font-size: 12px; opacity: 0.5; }
 
 .hud__clock { font-size: 26px; font-weight: 600; letter-spacing: 0.5px; }
@@ -334,15 +335,20 @@
 .hud__people .hud__section { margin-top: 10px; padding-top: 9px; margin-bottom: 6px; }
 .hud__people .hud__hint { margin-top: 0; }
 
-.person {
+/*
+ * Человек в списке занимает столько строк, сколько между вами всего
+ * произошло: фамилия с оценкой отношений, под ней — по строчке на симпатию
+ * и на уважение. Чисел нет ни одного, величину показывают стрелки.
+ */
+.person { font-size: 12px; margin-top: 8px; }
+.person:first-of-type { margin-top: 0; }
+
+.person__head {
   display: flex;
   align-items: baseline;
   gap: 8px;
-  font-size: 12px;
-  margin-top: 6px;
 }
 
-.person:first-of-type { margin-top: 0; }
 .person__name { flex: 0 0 auto; opacity: 0.9; }
 
 .person__level {
@@ -353,15 +359,28 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-align: right;
 }
 
-.person__scores {
-  flex: 0 0 auto;
+.person__standing {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-top: 2px;
   font-size: 11px;
   opacity: 0.7;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
 }
+
+.person__standing-text { flex: 1; min-width: 0; }
+
+.person__marker {
+  flex: 0 0 auto;
+  letter-spacing: -1px;
+  opacity: 0.9;
+}
+
+.person__marker--up { color: #8fd6a1; }
+.person__marker--down { color: #e58a83; }
 
 /*
  * Окно разговора. Шире меню действий: здесь не подписи в два слова,

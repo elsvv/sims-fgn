@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { MoodletList, moodletFrom, type Moodlet, type MoodletSpec } from './Moodlets'
+import {
+  MoodletList,
+  moodletFrom,
+  moodWeight,
+  type Moodlet,
+  type MoodletSpec,
+} from './Moodlets'
 
 const COFFEE: MoodletSpec = {
   id: 'coffee',
@@ -194,5 +200,42 @@ describe('список модификаторов', () => {
     const restored = MoodletList.fromJSON(data)
     restored.add(at(ELEVATOR, 0))
     expect(data.length).toBe(1)
+  })
+})
+
+/*
+ * Вес модификатора в панели стоял числом: «+40», «−30». Сравнить эти числа
+ * игроку не с чем — шкалы настроения он не видит, — поэтому наружу выходит
+ * фраза о том, насколько сильно это давит.
+ */
+describe('вес модификатора словами', () => {
+  it('вниз и вверх говорят разное', () => {
+    expect(moodWeight(40).text).toBe('сильно тянет вверх')
+    expect(moodWeight(-40).text).toBe('сильно тянет вниз')
+  })
+
+  it('величина растёт по ступеням', () => {
+    expect(moodWeight(-6).text).toBe('чуть портит')
+    expect(moodWeight(-16).text).toBe('заметно портит')
+    expect(moodWeight(-45).text).toBe('сильно тянет вниз')
+    expect(moodWeight(8).text).toBe('чуть поднимает')
+    expect(moodWeight(20).text).toBe('заметно поднимает')
+  })
+
+  it('направление отдаётся отдельно — по нему панель красит строку', () => {
+    expect(moodWeight(12).direction).toBe('up')
+    expect(moodWeight(-12).direction).toBe('down')
+    expect(moodWeight(0).direction).toBe('flat')
+  })
+
+  it('нулевой вес не выдаёт себя за событие', () => {
+    expect(moodWeight(0).magnitude).toBe('none')
+    expect(moodWeight(0).text).toBe('на настроении не сказывается')
+  })
+
+  it('ни в одной фразе нет чисел', () => {
+    for (const mood of [-50, -30, -12, -3, 3, 12, 30, 50]) {
+      expect(moodWeight(mood).text, `${mood}`).not.toMatch(/\d/)
+    }
   })
 })

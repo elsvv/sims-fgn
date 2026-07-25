@@ -1,3 +1,5 @@
+import { directionOf, type Direction, type Magnitude } from '../dialogue/Consequences'
+
 /**
  * Модификаторы настроения — временные эффекты с текстом.
  * Дизайн-документ, раздел 4.2: это главный источник юмора и обратной
@@ -26,6 +28,47 @@ export interface MoodletSpec {
 }
 
 export type MoodletCatalog = Record<string, MoodletSpec>
+
+/**
+ * Насколько сильно модификатор давит на настроение — словами.
+ *
+ * Вес модификатора числа не имеет: «−30» игроку ничего не говорит, потому
+ * что не с чем сравнивать. «Сильно тянет вниз» говорит ровно то, что нужно
+ * знать: опоздание к Марею испортит день целиком, а долгий гардероб —
+ * не испортит. Шкала своя: в каталоге сдвиги лежат в пределах полусотни.
+ */
+export interface MoodWeight {
+  direction: Direction
+  magnitude: Magnitude
+  /** «сильно тянет вниз», «чуть поднимает». */
+  text: string
+}
+
+const WEIGHT_WORDS: Record<Exclude<Magnitude, 'none'>, { up: string; down: string }> = {
+  slight: { up: 'чуть поднимает', down: 'чуть портит' },
+  noticeable: { up: 'заметно поднимает', down: 'заметно портит' },
+  strong: { up: 'сильно тянет вверх', down: 'сильно тянет вниз' },
+}
+
+const NO_WEIGHT = 'на настроении не сказывается'
+
+function weightMagnitude(mood: number): Magnitude {
+  const size = Math.abs(Math.round(mood))
+  if (size === 0) return 'none'
+  if (size <= 10) return 'slight'
+  if (size <= 25) return 'noticeable'
+  return 'strong'
+}
+
+export function moodWeight(mood: number): MoodWeight {
+  const magnitude = weightMagnitude(mood)
+  const direction = directionOf(mood)
+  if (magnitude === 'none' || direction === 'flat') {
+    return { direction: 'flat', magnitude: 'none', text: NO_WEIGHT }
+  }
+  const words = WEIGHT_WORDS[magnitude]
+  return { direction, magnitude, text: direction === 'down' ? words.down : words.up }
+}
 
 /** Превращает заготовку в живой модификатор, отсчитывая срок от текущей минуты. */
 export function moodletFrom(spec: MoodletSpec, currentMinute: number): Moodlet {

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { moodWeight } from '../sim/needs/Moodlets'
 import { MOODLETS } from './moodlets'
 import { PROP_CATALOG } from './props/propCatalog'
 
@@ -66,6 +67,22 @@ describe('каталог модификаторов настроения', () =>
     expect(MOODLETS.lateToMarey?.label).toBe('Опоздал к Марею')
     expect(MOODLETS.lateToMarey?.mood).toBe(-30)
     expect(MOODLETS.waitedForElevator?.label).toBe('Ждал лифт восемь минут')
+  })
+
+  it('вес каждого читается словами, а не числом', () => {
+    // В панели настроения стояло «+40» и «−30». Числу этому не с чем
+    // сравниться: шкалы настроения игрок не видит и видеть не должен.
+    for (const spec of ENTRIES) {
+      const weight = moodWeight(spec.mood)
+      expect(weight.magnitude, spec.id).not.toBe('none')
+      expect(weight.direction, spec.id).toBe(spec.mood > 0 ? 'up' : 'down')
+      expect(weight.text, spec.id).not.toMatch(/\d/)
+    }
+  })
+
+  it('самый тяжёлый и самый лёгкий описаны по-разному', () => {
+    expect(moodWeight(MOODLETS.passedOutWhereStanding?.mood ?? 0).magnitude).toBe('strong')
+    expect(moodWeight(MOODLETS.checkroomFarAway?.mood ?? 0).magnitude).toBe('slight')
   })
 
   it('каждое действие с предметом ссылается на существующий модификатор', () => {

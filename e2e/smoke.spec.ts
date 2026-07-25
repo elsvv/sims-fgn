@@ -299,7 +299,14 @@ test('сцена этажа рисуется, интерфейс на месте
 
   const met = people.locator('.person', { hasText: 'Михайловский' })
   await expect(met).toHaveCount(1)
-  await expect(met.locator('.person__scores')).toHaveText('+6 / −8')
+
+  // Отношения показаны словами: симпатия за дерзость выросла, уважение
+  // упало, и ни одного числа в строке нет.
+  const standings = met.locator('.person__standing')
+  await expect(standings).toHaveCount(2)
+  await expect(standings.nth(0)).toContainText('Симпатия: к вам скорее тепло')
+  await expect(standings.nth(1)).toContainText('Уважение: держат за слабого')
+  expect(await met.innerText(), 'в списке людей появилось число').not.toMatch(/\d/)
 
   // Дерзость перед самым континентальным человеком факультета сносит
   // игрока в аналитическую сторону — метка уходит левее середины.

@@ -1,3 +1,4 @@
+import { moodWeight } from '../../sim/needs/Moodlets'
 import {
   MAX_SKILL,
   SKILL_IDS,
@@ -19,14 +20,14 @@ function skillColor(value: number): string {
   return '#4d6ba8'
 }
 
-/** Число с одним знаком после запятой, как оценка в ведомости. */
+/**
+ * Число с одним знаком после запятой, как оценка в ведомости.
+ *
+ * Навык — из немногого, что числом и остаётся: это та же десятибалльная
+ * шкала, по которой в университете ставят оценки, и игрок читает её так же.
+ */
 function formatSkill(value: number): string {
   return value.toFixed(1).replace('.', ',')
-}
-
-/** Знак влияния модификатора: «+40», «−30». */
-function formatMood(mood: number): string {
-  return mood > 0 ? `+${mood}` : `−${Math.abs(mood)}`
 }
 
 function StrongestSkill({ skills }: { skills: Skills }) {
@@ -87,16 +88,23 @@ export function SkillsPanel() {
       {snapshot.activeMoodlets.length === 0 ? (
         <div className="moodlet__empty">Ничего особенного не случилось</div>
       ) : (
-        snapshot.activeMoodlets.map((moodlet) => (
-          <div className="moodlet" key={moodlet.id}>
-            <span className="moodlet__label">{moodlet.label}</span>
-            <span
-              className={`moodlet__mood moodlet__mood--${moodlet.mood > 0 ? 'good' : 'bad'}`}
-            >
-              {formatMood(moodlet.mood)}
-            </span>
-          </div>
-        ))
+        snapshot.activeMoodlets.map((moodlet) => {
+          /*
+           * Вес модификатора — словами. «−30» игроку не с чем сравнить:
+           * шкалы настроения он нигде не видит и видеть не должен.
+           * «Сильно тянет вниз» сообщает ровно то, ради чего эта строчка
+           * вообще есть, — стоит ли из-за этого менять планы на день.
+           */
+          const weight = moodWeight(moodlet.mood)
+          return (
+            <div className="moodlet" key={moodlet.id}>
+              <span className="moodlet__label">{moodlet.label}</span>
+              <span className={`moodlet__mood moodlet__mood--${weight.direction}`}>
+                {weight.text}
+              </span>
+            </div>
+          )
+        })
       )}
     </div>
   )
