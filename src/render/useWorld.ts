@@ -7,6 +7,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
+import { DIALOGUE_CHAINS } from '../content/dialogue/chains'
 import { DIALOGUE_NODES } from '../content/dialogue/nodes'
 import { FLOOR_A2, FLOOR_A2_SPAWN } from '../content/floors/floorA2'
 import { MOODLETS } from '../content/moodlets'
@@ -35,7 +36,7 @@ export function WorldProvider({ children }: { children: ReactNode }) {
     new StudyState(STUDY_CONFIG),
     MOODLETS,
     TEACHER_NPCS,
-    { teachers: TEACHERS, dialogues: DIALOGUE_NODES },
+    { teachers: TEACHERS, dialogues: DIALOGUE_NODES, chains: DIALOGUE_CHAINS },
   )
   return createElement(WorldContext.Provider, { value: worldRef.current }, children)
 }

@@ -110,6 +110,48 @@ export const MOODLETS: MoodletCatalog = {
     durationMinutes: 300,
   },
 
+  /*
+   * Пять исходов сцены «Марей в туалете». Каждый разговор с ним
+   * запоминается на полдня — разговор, который кончился темой курсовой,
+   * и разговор, после которого он придержал вам дверь, помнятся одинаково
+   * долго и с разным знаком. Привязка — в концовках цепочки,
+   * см. content/dialogue/marey-restroom.ts.
+   */
+
+  // [допущение] Братство по оружию: вышли из туалета соучастниками.
+  caughtMareyAtTheSink: {
+    id: 'caughtMareyAtTheSink',
+    label: 'Поймали Марея у раковины и разошлись соучастниками',
+    mood: 30,
+    durationMinutes: 480,
+  },
+
+  // [допущение] Учёная дуэль: он опоздал на собственную лекцию и был доволен.
+  academicDuelDrawn: {
+    id: 'academicDuelDrawn',
+    label: 'Свели учёную дуэль вничью, и он опоздал на лекцию',
+    mood: 20,
+    durationMinutes: 360,
+  },
+
+  // [исследование: research/marey-deep.md, §6.2, telegram #667 — тема курсовой
+  // с пререквизитами «начальная латынь, развитая фантазия, доля безумия»]
+  courseworkFromNowhere: {
+    id: 'courseworkFromNowhere',
+    label: 'Спор у раковины кончился темой для курсовой',
+    mood: 28,
+    durationMinutes: 480,
+  },
+
+  // [исследование: research/marey-deep.md, §6.2, telegram #444 — «Помните,
+  // что это вам нужно». Он придерживает дверь, и это хуже, чем хлопнуть ею.]
+  heHeldTheDoorOpen: {
+    id: 'heHeldTheDoorOpen',
+    label: 'Он придержал вам дверь, и это было хуже всего',
+    mood: -20,
+    durationMinutes: 300,
+  },
+
   // [исследование: research/alieva.md — семинары Antibarbari шли по субботам,
   // и люди приходили в свой единственный выходной читать «Федона».]
   antibarbariSaturday: {

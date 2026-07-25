@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { isMoving } from './actor/Actor'
 import type { DialogueCatalog, DialogueNode } from './dialogue/Dialogue'
+import type { ChainCatalog, DialogueChainData } from './dialogue/DialogueChain'
 import type { MoodletCatalog } from './needs/Moodlets'
 import { npcRoom, type NpcSpec } from './npc/Npc'
 import { createSkills, SKILL_IDS } from './player/Skills'
@@ -1000,6 +1001,501 @@ describe('World: снимок социального состояния', () => 
     const snapshot = makeWorld().snapshot()
     expect(snapshot.relationships).toEqual([])
     expect(snapshot.faction).toBe(0)
+  })
+})
+
+/* ------------------------------------------------------------------ */
+/* Многошаговые сцены                                                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Маленькая сцена на два шага и две концовки: прямая ветка ведёт к хорошему
+ * исходу, осторожная — к никакому. Третья реплика заперта навыком: на ней
+ * проверяется, что закрытые строки видны, но нажать их нельзя.
+ */
+const CHAIN: DialogueChainData = {
+  id: 'у-автомата',
+  speakerId: 'continental',
+  intro: 'Вы столкнулись у кофейного автомата.',
+  startId: 'start',
+  nodes: [
+    {
+      id: 'start',
+      speakerId: 'continental',
+      prompt: 'Ну и что вы об этом думаете?',
+      options: [
+        {
+          id: 'plain',
+          text: 'Ответить прямо, без оговорок',
+          tone: 'direct',
+          effects: { respect: 10, faction: 4 },
+          reply: 'Так. Уже лучше.',
+          consequence: 'Он оценил, что вы не стали юлить.',
+          next: 'second',
+        },
+        {
+          id: 'rude',
+          text: 'Надерзить и посмотреть, что будет',
+          tone: 'bold',
+          effects: { affection: -12, respect: 2, moodletId: 'elevator' },
+          reply: 'Смело. Продолжайте.',
+          consequence: 'Шпилька попала, и он этого не скрыл.',
+          next: 'second',
+        },
+        {
+          id: 'locked',
+          text: 'Ответить цитатой из оригинала',
+          tone: 'scholarly',
+          requires: { skillId: 'ancientLanguages', skillMin: 4 },
+          effects: { respect: 14, skill: { id: 'ancientLanguages', amount: 1 } },
+          reply: 'Надо же. Вы читали.',
+          consequence: 'Цитата у автомата — он не ожидал.',
+          next: 'second',
+        },
+      ],
+    },
+    {
+      id: 'second',
+      speakerId: 'continental',
+      prompt: 'И что из этого следует?',
+      options: [
+        {
+          id: 'finish-good',
+          text: 'Довести мысль до конца',
+          tone: 'direct',
+          effects: { affection: 8 },
+          reply: 'Хорошо. Договорили.',
+          consequence: 'Вы довели мысль и не спрятались.',
+          next: 'end-good',
+        },
+        {
+          id: 'finish-bad',
+          text: 'Сдать назад, пока не поздно',
+          tone: 'cautious',
+          effects: { respect: -6 },
+          reply: 'Понятно.',
+          consequence: 'Вы отступили с уже занятой позиции.',
+          next: 'end-bad',
+        },
+      ],
+    },
+    {
+      id: 'end-good',
+      speakerId: 'continental',
+      prompt: 'Приходите на семинар, там договорим.',
+      options: [],
+      ending: {
+        id: 'good',
+        title: 'Разошлись собеседниками',
+        summary: 'Он вас запомнил, и запомнил с хорошей стороны.',
+        moodletId: 'praised',
+      },
+    },
+    {
+      id: 'end-bad',
+      speakerId: 'continental',
+      prompt: 'Идите, идите.',
+      options: [],
+      ending: {
+        id: 'bad',
+        title: 'Разошлись никем',
+        summary: 'Вашего лица он не запомнил.',
+      },
+    },
+  ],
+}
+
+const CHAINS: ChainCatalog = {
+  'у-автомата': { chain: CHAIN, room: 'коридор', once: true },
+}
+
+function makeChainWorld(spawn = IN_CORRIDOR, chains: ChainCatalog = CHAINS): World {
+  return new World(STUDY_PLAN, spawn, {}, null, MOODLET_CATALOG, TALK_NPCS, {
+    teachers: TALK_TEACHERS,
+    dialogues: TALK_DIALOGUES,
+    chains,
+  })
+}
+
+describe('World: начало многошаговой сцены', () => {
+  it('мир без сцен молча отказывает', () => {
+    expect(makeWorld().startChainDialogue('у-автомата')).toBe(false)
+    expect(makeWorld().activeChain).toBeNull()
+  })
+
+  it('несуществующая сцена не начинается', () => {
+    expect(makeChainWorld().startChainDialogue('нет-такой')).toBe(false)
+  })
+
+  it('в одном помещении с собеседником сцена начинается', () => {
+    const world = makeChainWorld()
+    expect(world.startChainDialogue('у-автомата')).toBe(true)
+    expect(world.activeChain?.npcId).toBe('teacher-continental')
+  })
+
+  it('из другого помещения сцену не завести', () => {
+    const world = makeChainWorld(IN_CLASS)
+    expect(world.startChainDialogue('у-автомата')).toBe(false)
+    expect(world.activeChain).toBeNull()
+  })
+
+  it('сцена привязана к помещению: в чужой комнате её нет', () => {
+    // Собеседник рядом, но сцена написана для коридора, а стоят оба
+    // в аудитории — значит, это не она.
+    const chains: ChainCatalog = {
+      'у-автомата': { chain: CHAIN, room: 'туалеты' },
+    }
+    const world = makeChainWorld(IN_CORRIDOR, chains)
+    expect(world.startChainDialogue('у-автомата')).toBe(false)
+  })
+
+  it('сцена без привязки к помещению годится везде, где собеседник рядом', () => {
+    const world = makeChainWorld(IN_CORRIDOR, { 'у-автомата': { chain: CHAIN } })
+    expect(world.startChainDialogue('у-автомата')).toBe(true)
+  })
+
+  it('сцена останавливает шаг: на ходу не разговаривают', () => {
+    const world = makeChainWorld()
+    expect(world.commandMoveTo({ col: 8, row: 2 })).toBe(true)
+    world.startChainDialogue('у-автомата')
+    expect(isMoving(world.player)).toBe(false)
+  })
+
+  it('сцена закрывает начатый короткий разговор', () => {
+    const world = makeChainWorld()
+    world.startDialogue('continental-hall')
+    world.startChainDialogue('у-автомата')
+    expect(world.activeDialogue).toBeNull()
+    expect(world.activeChain).not.toBeNull()
+  })
+
+  it('одноразовую сцену второй раз не предлагают', () => {
+    const world = makeChainWorld()
+    world.startChainDialogue('у-автомата')
+    world.chooseChainOption('plain')
+    world.continueChainDialogue()
+    world.chooseChainOption('finish-good')
+    world.endChainDialogue()
+
+    expect(world.playedChains).toEqual(['у-автомата'])
+    expect(world.availableChains()).toEqual([])
+    expect(world.startChainDialogue('у-автомата')).toBe(false)
+  })
+
+  it('брошенная на середине сцена сыгранной не считается', () => {
+    const world = makeChainWorld()
+    world.startChainDialogue('у-автомата')
+    world.chooseChainOption('plain')
+    world.endChainDialogue()
+
+    expect(world.playedChains).toEqual([])
+    expect(world.startChainDialogue('у-автомата')).toBe(true)
+  })
+
+  it('подсказывает, какую сцену можно завести с этим человеком', () => {
+    const world = makeChainWorld()
+    expect(world.availableChains()).toEqual(['у-автомата'])
+    expect(world.chainForNpc('teacher-continental')).toBe('у-автомата')
+    expect(world.chainForNpc('teacher-analytic')).toBeNull()
+  })
+
+  it('издалека сцену не подсказывают', () => {
+    const world = makeChainWorld(IN_CLASS)
+    expect(world.availableChains()).toEqual([])
+    expect(world.chainForNpc('teacher-continental')).toBeNull()
+  })
+})
+
+describe('World: ход многошаговой сцены', () => {
+  it('первый узел показывает завязку, реплику и ответы с тоном', () => {
+    const world = makeChainWorld()
+    world.startChainDialogue('у-автомата')
+
+    const chain = world.snapshot().activeChain
+    expect(chain?.chainId).toBe('у-автомата')
+    expect(chain?.speakerId).toBe('continental')
+    expect(chain?.intro).toContain('кофейного автомата')
+    expect(chain?.nodeId).toBe('start')
+    expect(chain?.prompt).toBe('Ну и что вы об этом думаете?')
+    expect(chain?.options.map((option) => option.tone)).toEqual([
+      'direct',
+      'bold',
+      'scholarly',
+    ])
+    expect(chain?.options.map((option) => option.toneLabel)).toEqual([
+      'прямо',
+      'дерзко',
+      'по-учёному',
+    ])
+    expect(chain?.awaitingContinue).toBe(false)
+    expect(chain?.outcome).toBeNull()
+  })
+
+  it('закрытая реплика видна серой и с намёком, чего не хватает', () => {
+    const world = makeChainWorld()
+    world.startChainDialogue('у-автомата')
+
+    const locked = world.snapshot().activeChain?.options.find((o) => o.id === 'locked')
+    expect(locked?.available).toBe(false)
+    expect(locked?.lockHint).toBe('нужны древние языки')
+    expect(locked?.text).toBe('Ответить цитатой из оригинала')
+  })
+
+  it('прокачанному игроку та же реплика открыта и без подсказки', () => {
+    const world = makeChainWorld()
+    world.skills = createSkills({ ancientLanguages: 6 })
+    world.startChainDialogue('у-автомата')
+
+    const locked = world.snapshot().activeChain?.options.find((o) => o.id === 'locked')
+    expect(locked?.available).toBe(true)
+    expect(locked?.lockHint).toBeNull()
+  })
+
+  it('закрытую реплику выбрать нельзя, и сцена от этого не падает', () => {
+    const world = makeChainWorld()
+    world.startChainDialogue('у-автомата')
+
+    expect(world.chooseChainOption('locked')).toBeNull()
+    expect(world.snapshot().activeChain?.nodeId).toBe('start')
+    expect(world.relationships.get('teacher-continental').respect).toBe(0)
+  })
+
+  it('несуществующую реплику мир отвергает молча', () => {
+    const world = makeChainWorld()
+    world.startChainDialogue('у-автомата')
+    expect(world.chooseChainOption('нет-такой')).toBeNull()
+  })
+
+  it('без начатой сцены выбирать нечего', () => {
+    expect(makeChainWorld().chooseChainOption('plain')).toBeNull()
+  })
+
+  it('выбор даёт ответ собеседника и последствие словами', () => {
+    const world = makeChainWorld()
+    world.startChainDialogue('у-автомата')
+
+    const step = world.chooseChainOption('plain')
+    expect(step?.reply).toBe('Так. Уже лучше.')
+    expect(step?.consequence?.reason).toBe('Он оценил, что вы не стали юлить.')
+    expect(step?.consequence?.text).not.toMatch(/\d/)
+    expect(step?.consequence?.changes.map((change) => change.dimension)).toEqual([
+      'respect',
+      'faction',
+    ])
+    expect(step?.awaitingContinue).toBe(true)
+  })
+
+  it('пока ответ на экране, нового выбора не предлагают', () => {
+    const world = makeChainWorld()
+    world.startChainDialogue('у-автомата')
+    world.chooseChainOption('plain')
+
+    expect(world.snapshot().activeChain?.options).toEqual([])
+    expect(world.chooseChainOption('finish-good')).toBeNull()
+  })
+
+  it('ответ и следующая реплика не показываются разом и задом наперёд', () => {
+    const world = makeChainWorld()
+    world.startChainDialogue('у-автомата')
+    world.chooseChainOption('plain')
+
+    const answered = world.snapshot().activeChain
+    expect(answered?.reply).toBe('Так. Уже лучше.')
+    expect(answered?.prompt).toBeNull()
+    expect(answered?.intro).toBeNull()
+
+    world.continueChainDialogue()
+    const next = world.snapshot().activeChain
+    expect(next?.prompt).toBe('И что из этого следует?')
+    expect(next?.reply).toBeNull()
+  })
+
+  it('повторное «дальше» ничего не двигает', () => {
+    const world = makeChainWorld()
+    world.startChainDialogue('у-автомата')
+    world.chooseChainOption('plain')
+    expect(world.continueChainDialogue()).toBe(true)
+    expect(world.continueChainDialogue()).toBe(false)
+    expect(world.snapshot().activeChain?.nodeId).toBe('second')
+  })
+
+  it('«дальше» убирает ответ и открывает следующий выбор', () => {
+    const world = makeChainWorld()
+    world.startChainDialogue('у-автомата')
+    world.chooseChainOption('plain')
+    expect(world.continueChainDialogue()).toBe(true)
+
+    const chain = world.snapshot().activeChain
+    expect(chain?.nodeId).toBe('second')
+    expect(chain?.prompt).toBe('И что из этого следует?')
+    expect(chain?.reply).toBeNull()
+    expect(chain?.consequence).toBeNull()
+    expect(chain?.options.map((option) => option.id)).toEqual(['finish-good', 'finish-bad'])
+  })
+
+  it('завязка показывается один раз', () => {
+    const world = makeChainWorld()
+    world.startChainDialogue('у-автомата')
+    world.chooseChainOption('plain')
+    world.continueChainDialogue()
+    expect(world.snapshot().activeChain?.intro).toBeNull()
+  })
+
+  it('концовка приходит с названием, итогом и последней репликой', () => {
+    const world = makeChainWorld()
+    world.startChainDialogue('у-автомата')
+    world.chooseChainOption('plain')
+    world.continueChainDialogue()
+    world.chooseChainOption('finish-good')
+    world.continueChainDialogue()
+
+    const chain = world.snapshot().activeChain
+    expect(chain?.nodeId).toBeNull()
+    expect(chain?.prompt).toBe('Приходите на семинар, там договорим.')
+    expect(chain?.options).toEqual([])
+    expect(chain?.outcome?.endingId).toBe('good')
+    expect(chain?.outcome?.title).toBe('Разошлись собеседниками')
+    expect(chain?.outcome?.closing).toContain('В сумме')
+    expect(chain?.outcome?.closing).not.toMatch(/\d/)
+  })
+
+  it('разные ответы ведут к разным концовкам', () => {
+    function endingOf(second: string): string | undefined {
+      const world = makeChainWorld()
+      world.startChainDialogue('у-автомата')
+      world.chooseChainOption('plain')
+      world.continueChainDialogue()
+      return world.chooseChainOption(second)?.outcome?.endingId
+    }
+    expect(endingOf('finish-good')).toBe('good')
+    expect(endingOf('finish-bad')).toBe('bad')
+  })
+
+  it('закрытие окна не отменяет применённых эффектов', () => {
+    const world = makeChainWorld()
+    world.startChainDialogue('у-автомата')
+    world.chooseChainOption('rude')
+    world.endChainDialogue()
+
+    expect(world.snapshot().activeChain).toBeNull()
+    expect(world.relationships.get('teacher-continental').affection).toBe(-12)
+  })
+})
+
+describe('World: эффекты многошаговой сцены', () => {
+  it('симпатия и уважение уходят в карту отношений', () => {
+    const world = makeChainWorld()
+    world.startChainDialogue('у-автомата')
+    world.chooseChainOption('rude')
+
+    const relationship = world.relationships.get('teacher-continental')
+    expect(relationship.affection).toBe(-12)
+    expect(relationship.respect).toBeGreaterThan(0)
+  })
+
+  it('прирост уважения проходит через близость взглядов', () => {
+    function respectFrom(faction: number): number {
+      const world = makeChainWorld()
+      world.faction = faction
+      world.startChainDialogue('у-автомата')
+      world.chooseChainOption('plain')
+      return world.relationships.get('teacher-continental').respect
+    }
+    const asOwn = respectFrom(85)
+    const asStranger = respectFrom(-100)
+    expect(asOwn).toBeGreaterThan(asStranger)
+    expect(asStranger).toBeGreaterThan(0)
+  })
+
+  it('потеря уважения идёт в полном размере', () => {
+    function penalty(faction: number): number {
+      const world = makeChainWorld()
+      world.faction = faction
+      world.startChainDialogue('у-автомата')
+      world.chooseChainOption('plain')
+      const before = world.relationships.get('teacher-continental').respect
+      world.continueChainDialogue()
+      world.chooseChainOption('finish-bad')
+      return world.relationships.get('teacher-continental').respect - before
+    }
+    expect(penalty(85)).toBe(-6)
+    expect(penalty(-85)).toBe(-6)
+  })
+
+  it('сдвигает игрока по шкале традиций', () => {
+    const world = makeChainWorld()
+    world.startChainDialogue('у-автомата')
+    world.chooseChainOption('plain')
+    expect(world.faction).toBe(4)
+  })
+
+  it('качает навык через общий замедлитель прокачки', () => {
+    const world = makeChainWorld()
+    world.skills = createSkills({ ancientLanguages: 6 })
+    world.startChainDialogue('у-автомата')
+    world.chooseChainOption('locked')
+
+    expect(world.skills.ancientLanguages).toBeGreaterThan(6)
+    expect(world.skills.ancientLanguages).toBeLessThan(7)
+  })
+
+  it('реплика вешает свой модификатор настроения', () => {
+    const world = makeChainWorld()
+    world.startChainDialogue('у-автомата')
+    world.chooseChainOption('rude')
+    expect(world.moodlets.has('elevator')).toBe(true)
+  })
+
+  it('концовка вешает свой', () => {
+    const world = makeChainWorld()
+    world.startChainDialogue('у-автомата')
+    world.chooseChainOption('plain')
+    world.continueChainDialogue()
+    world.chooseChainOption('finish-good')
+
+    expect(world.moodlets.has('praised')).toBe(true)
+    expect(world.snapshot().activeMoodlets.map((item) => item.label)).toContain(
+      'Похвалил Михайловский',
+    )
+  })
+
+  it('концовка без модификатора настроения ничего не вешает', () => {
+    const world = makeChainWorld()
+    world.startChainDialogue('у-автомата')
+    world.chooseChainOption('plain')
+    world.continueChainDialogue()
+    world.chooseChainOption('finish-bad')
+    expect(world.snapshot().activeMoodlets).toEqual([])
+  })
+})
+
+describe('World: короткие разговоры остались прежними', () => {
+  it('одношаговый разговор работает в мире со сценами', () => {
+    const world = makeChainWorld()
+    expect(world.startDialogue('continental-hall')).toBe(true)
+    expect(world.chooseOption('smart')).toBe('Уже лучше.')
+    expect(world.snapshot().activeChain).toBeNull()
+  })
+
+  it('посреди сцены короткий разговор не начинается', () => {
+    const world = makeChainWorld()
+    world.startChainDialogue('у-автомата')
+    expect(world.startDialogue('continental-hall')).toBe(false)
+    expect(world.snapshot().activeDialogue).toBeNull()
+  })
+
+  it('посреди сцены не начинается и вторая сцена', () => {
+    const world = makeChainWorld()
+    world.startChainDialogue('у-автомата')
+    expect(world.availableChains()).toEqual([])
+    expect(world.startChainDialogue('у-автомата')).toBe(false)
+    expect(world.snapshot().activeChain?.nodeId).toBe('start')
+  })
+
+  it('в мире без сцен снимок про них молчит', () => {
+    const snapshot = makeTalkWorld().snapshot()
+    expect(snapshot.activeChain).toBeNull()
+    expect(snapshot.availableChains).toEqual([])
   })
 })
 

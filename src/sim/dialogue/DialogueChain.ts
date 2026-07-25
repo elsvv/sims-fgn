@@ -28,6 +28,13 @@ export interface ChainEffects extends DialogueEffects {
    * см. sim/social/Romance.ts и validateChain с профилем собеседника.
    */
   romance?: number
+  /**
+   * Модификатор настроения из каталога: разговор оставляет след не только
+   * в отношениях, но и в самом человеке. Идентификатор приходит данными,
+   * мир молча пропускает неизвестный — опечатка в контенте не должна
+   * ронять сцену на середине.
+   */
+  moodletId?: string
 }
 
 export interface ChainOption extends DialogueOption {
@@ -47,6 +54,11 @@ export interface ChainEnding {
   title: string
   /** Что это значило для отношений. */
   summary: string
+  /**
+   * Модификатор настроения, с которым игрок уходит из сцены.
+   * Такой разговор помнят полдня — это и должно быть видно в панели.
+   */
+  moodletId?: string
 }
 
 export interface ChainNode extends DialogueNode {
@@ -63,6 +75,31 @@ export interface DialogueChainData {
   startId: string
   nodes: ChainNode[]
 }
+
+/**
+ * Сцена в каталоге: сама цепочка плюс условия, при которых её вообще
+ * предлагают завести.
+ *
+ * Условия здесь нарочно бытовые, а не сюжетные: сцена «Марей в туалете»
+ * существует ровно потому, что двое оказались в одном помещении в одну
+ * минуту. Кто где стоит, знает мир, а вот что сцена привязана к туалету —
+ * знают данные.
+ */
+export interface ChainEntry {
+  chain: DialogueChainData
+  /**
+   * Помещение, в котором сцена возможна. Не указано — где угодно,
+   * лишь бы собеседник был рядом.
+   */
+  room?: string
+  /**
+   * Сцена играется один раз за прохождение. Второй раз ловить того же
+   * человека у той же раковины — уже не случайная встреча, а преследование.
+   */
+  once?: boolean
+}
+
+export type ChainCatalog = Record<string, ChainEntry>
 
 /** Реплики, доступные в узле цепочки прямо сейчас. */
 export function availableChainOptions(

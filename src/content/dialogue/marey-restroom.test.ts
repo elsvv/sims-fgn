@@ -21,7 +21,7 @@ const MAREY: PersonProfile = {
 
 /** Отличник: ему открыты все реплики, включая латинские. */
 const SCHOLAR: DialogueContext = {
-  skills: { greek: 6, writing: 5, rhetoric: 4 },
+  skills: { ancientLanguages: 6, academicWriting: 5, eloquence: 4 },
   faction: 30,
   relationship: { affection: 0, respect: 0 },
   readBooks: [],
@@ -161,7 +161,7 @@ describe('сцена «Марей в туалете»: ветвление', () =
       .filter((option) => option.requires !== undefined)
     expect(gated.length).toBeGreaterThanOrEqual(2)
     for (const option of gated) {
-      expect(option.requires?.skillId, option.id).toBe('greek')
+      expect(option.requires?.skillId, option.id).toBe('ancientLanguages')
     }
   })
 
@@ -325,7 +325,7 @@ describe('сцена «Марей в туалете»: прогоны', () => {
     ])
     expect(outcome.ending.id).toBe('coursework')
     expect(outcome.totals.respect).toBeGreaterThan(20)
-    expect(outcome.totals.skills).toEqual({ writing: 1 })
+    expect(outcome.totals.skills).toEqual({ academicWriting: 1 })
     expect(outcome.finalLine).toContain('у меня своей славы хватает')
   })
 

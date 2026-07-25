@@ -16,6 +16,67 @@ import type { NavGrid } from '../world/NavGrid'
 export const ARRIVE_BEFORE_MINUTES = 30
 
 /**
+ * Бытовая вылазка перед собственной парой: зайти в туалет, к автомату,
+ * покурить во дворе.
+ *
+ * Механика общая и параметризованная нарочно. Сцена «Марей в туалете»
+ * держится на том, что преподавателя можно застать не за кафедрой, а по
+ * дороге к ней, — но это не свойство Марея, а свойство живого человека,
+ * и любой другой житель этажа получает такое же поведение одной строчкой
+ * в каталоге.
+ *
+ * Состояния не хранится: окно считается от расписания, поэтому пауза,
+ * перемотка и загрузка сохранения ничего не ломают — ровно как у пары.
+ */
+export interface ErrandHabit {
+  /** Помещение, куда персонаж заходит. */
+  room: string
+  /** За сколько игровых минут до звонка он туда направляется. */
+  beforeLessonMinutes: number
+  /** Сколько игровых минут длится вылазка, считая дорогу туда. */
+  durationMinutes: number
+}
+
+/** Окно вылазки: где персонаж должен быть и с какой по какую минуту суток. */
+export interface ErrandWindow {
+  room: string
+  /** Минута суток, с которой он идёт в помещение. */
+  fromMinutes: number
+  /** Минута суток, на которой он оттуда выходит. */
+  untilMinutes: number
+  /** Пара, перед которой всё это затеяно. */
+  lesson: Lesson
+}
+
+/**
+ * Окно вылазки перед конкретной парой.
+ *
+ * Конец окна зажат обязательным сроком выхода к аудитории: что бы ни было
+ * написано в каталоге, преподаватель покидает туалет не позже, чем за
+ * ARRIVE_BEFORE_MINUTES до звонка, и на собственную пару не опаздывает.
+ * Опоздание преподавателя — не шутка, а сломанная посещаемость: студент
+ * ставит отметку по тому, где стоит он сам, а вот выступать ему было бы
+ * не перед кем.
+ *
+ * Если каталог задан бессмысленно (вылазка начинается позже, чем пора
+ * выходить), окно получается пустым и никакой вылазки просто не будет.
+ */
+export function errandWindow(
+  habit: ErrandHabit,
+  lesson: Lesson,
+  lessonStartMinutes: number,
+): ErrandWindow {
+  const latest = lessonStartMinutes - ARRIVE_BEFORE_MINUTES
+  const from = lessonStartMinutes - habit.beforeLessonMinutes
+  return {
+    room: habit.room,
+    fromMinutes: from,
+    untilMinutes: Math.min(from + habit.durationMinutes, latest),
+    lesson,
+  }
+}
+
+/**
  * Житель этажа. Актор отвечает за положение и путь, всё остальное —
  * ссылки на данные: кто это и где он обитает между парами.
  *
@@ -41,6 +102,20 @@ export interface NpcSpec {
    */
   courseIds: readonly string[]
   homeRoom: string
+  /** Бытовая привычка перед своей парой. Не указана — человек идёт прямо в аудиторию. */
+  errand?: ErrandHabit
+}
+
+/** Чем персонаж занят прямо сейчас. */
+export type NpcActivity = 'idle' | 'errand' | 'classroom'
+
+/** Где персонаж должен быть в эту минуту и почему. */
+export interface NpcPlan {
+  activity: NpcActivity
+  /** Помещение, в которое он направляется. */
+  room: string
+  /** Пара, ради которой всё это происходит. null — просто своё место. */
+  lesson: Lesson | null
 }
 
 /** NPC в снимке состояния мира: всё, что нужно, чтобы его нарисовать. */
@@ -103,6 +178,39 @@ export function teachingSpot(grid: NavGrid, roomId: string): GridPos | null {
   return frontCell(grid, roomCells(grid, roomId))
 }
 
+/**
+ * Проходимая клетка ближе всего к середине помещения.
+ *
+ * Туда персонаж встаёт, зайдя по бытовому делу. Середина выбрана не ради
+ * красоты: к человеку, стоящему в углу, подойти можно только с одной
+ * стороны, а разговор начинается вплотную.
+ */
+function centreCell(grid: NavGrid, cells: readonly GridPos[]): GridPos | null {
+  const first = cells[0]
+  if (!first) return null
+
+  const room = grid.roomAt(first)
+  const centre = room
+    ? { col: (room.col0 + room.col1) / 2, row: (room.row0 + room.row1) / 2 }
+    : { col: first.col, row: first.row }
+
+  let best = first
+  let bestDistance = Number.POSITIVE_INFINITY
+  for (const cell of cells) {
+    const distance = Math.abs(cell.col - centre.col) + Math.abs(cell.row - centre.row)
+    if (distance < bestDistance) {
+      best = cell
+      bestDistance = distance
+    }
+  }
+  return best
+}
+
+/** Место, на котором персонаж стоит, зайдя в помещение по бытовому делу. */
+export function errandSpot(grid: NavGrid, roomId: string): GridPos | null {
+  return centreCell(grid, roomCells(grid, roomId))
+}
+
 /** Помещение, в котором стоит NPC, или null. */
 export function npcRoom(grid: NavGrid, npc: Npc): string | null {
   return grid.roomAt(grid.worldToGrid(npc.actor.position))?.id ?? null
@@ -113,7 +221,8 @@ export function npcRoom(grid: NavGrid, npc: Npc): string | null {
  *
  * Правило поведения одно и целиком выводится из расписания: если у персонажа
  * скоро или прямо сейчас пара — он идёт в её аудиторию и остаётся там до
- * звонка; в остальное время возвращается на своё место в «домашнем»
+ * звонка; если до пары ещё далеко, но подошло время бытовой вылазки — он
+ * заходит туда; в остальное время возвращается на своё место в «домашнем»
  * помещении. Никакого состояния «идёт на пару» не хранится — цель считается
  * заново от времени, поэтому перемотка времени и пауза ничего не ломают.
  */
@@ -122,6 +231,8 @@ export class NpcManager {
   private readonly schedule: Schedule
   /** Курсы каждого NPC: id NPC → идентификаторы курсов. */
   private readonly courses = new Map<string, readonly string[]>()
+  /** Бытовые привычки: id NPC → куда и когда он отлучается. */
+  private readonly errands = new Map<string, ErrandHabit>()
   /** Постоянное место в домашнем помещении. */
   private readonly homeCells = new Map<string, GridPos>()
   /** Клетка, к которой NPC отправлен сейчас. Нужна, чтобы не искать путь заново каждый кадр. */
@@ -144,6 +255,7 @@ export class NpcManager {
       const home = this.homeCellFor(grid, spec.homeRoom, index, total.get(spec.homeRoom) ?? 1)
       this.homeCells.set(spec.id, home)
       this.courses.set(spec.id, spec.courseIds)
+      if (spec.errand) this.errands.set(spec.id, spec.errand)
       this.items.push({
         id: spec.id,
         actor: createActor(spec.id, grid.gridToWorld(home)),
@@ -172,8 +284,8 @@ export class NpcManager {
    */
   tick(grid: NavGrid, scaledSeconds: number, day: number, minutes: number): void {
     for (const npc of this.items) {
-      const lesson = this.lessonFor(npc, day, minutes)
-      const target = this.targetFor(npc, grid, lesson)
+      const plan = this.planFor(npc, day, minutes)
+      const target = this.targetFor(npc, grid, plan)
       if (target) {
         const goal = this.goals.get(npc.id)
         if (!goal || !samePos(goal, target)) {
@@ -185,8 +297,11 @@ export class NpcManager {
 
       // Дошедший преподаватель разворачивается к аудитории. Иначе он
       // остаётся стоять так, как шёл, — то есть лицом в доску и спиной
-      // к тем, кому читает.
-      if (lesson && !isMoving(npc.actor)) this.faceRoom(grid, npc, lesson.room)
+      // к тем, кому читает. То же и на вылазке: с человеком, стоящим
+      // к вам спиной, не заговаривают.
+      if (plan.activity !== 'idle' && !isMoving(npc.actor)) {
+        this.faceRoom(grid, npc, plan.room)
+      }
     }
   }
 
@@ -219,9 +334,53 @@ export class NpcManager {
     return null
   }
 
-  private targetFor(npc: Npc, grid: NavGrid, lesson: Lesson | null): GridPos | null {
-    if (lesson) {
-      const spot = frontCell(grid, this.cellsOf(grid, lesson.room))
+  /**
+   * Вылазка, идущая прямо сейчас, или null.
+   *
+   * Ищется среди сегодняшних собственных пар: у человека может быть их
+   * несколько, а отлучается он перед каждой.
+   */
+  errandFor(npc: Npc, day: number, minutes: number): ErrandWindow | null {
+    const habit = this.errands.get(npc.id)
+    if (!habit) return null
+
+    const courses = this.courses.get(npc.id)
+    if (!courses || courses.length === 0) return null
+
+    for (const lesson of lessonsOnDay(this.schedule, day)) {
+      if (!courses.includes(lesson.courseId)) continue
+      const period = periodOf(lesson.period)
+      if (!period) continue
+      const window = errandWindow(habit, lesson, period.startMinutes)
+      if (minutes >= window.fromMinutes && minutes < window.untilMinutes) return window
+    }
+    return null
+  }
+
+  /**
+   * Что персонаж делает в эту минуту.
+   *
+   * Порядок жёсткий: пара важнее любых бытовых дел. Иначе преподаватель,
+   * у которого две пары подряд, ушёл бы из аудитории посреди собственной
+   * лекции — окно вылазки перед второй парой попадает внутрь первой.
+   */
+  planFor(npc: Npc, day: number, minutes: number): NpcPlan {
+    const lesson = this.lessonFor(npc, day, minutes)
+    if (lesson) return { activity: 'classroom', room: lesson.room, lesson }
+
+    const errand = this.errandFor(npc, day, minutes)
+    if (errand) return { activity: 'errand', room: errand.room, lesson: errand.lesson }
+
+    return { activity: 'idle', room: npc.homeRoom, lesson: null }
+  }
+
+  private targetFor(npc: Npc, grid: NavGrid, plan: NpcPlan): GridPos | null {
+    if (plan.activity === 'classroom') {
+      const spot = frontCell(grid, this.cellsOf(grid, plan.room))
+      if (spot) return spot
+    }
+    if (plan.activity === 'errand') {
+      const spot = centreCell(grid, this.cellsOf(grid, plan.room))
       if (spot) return spot
     }
     return this.homeCells.get(npc.id) ?? null

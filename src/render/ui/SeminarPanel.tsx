@@ -65,8 +65,11 @@ function SpeechResult({ speech }: { speech: SeminarSpeechInfo }) {
  */
 export function SeminarPanel() {
   const world = useWorld()
-  const { seminar } = useWorldSnapshot()
-  if (!seminar) return null
+  const { seminar, activeChain } = useWorldSnapshot()
+  // Панель и окно сцены стоят в одном месте — внизу по центру. Разговор
+  // важнее: поднять руку можно и через двадцать минут после звонка,
+  // а собеседник ждёт ответа сейчас.
+  if (!seminar || activeChain) return null
 
   const course = world.study?.config.courses[seminar.courseId]
   // В заголовке фамилия, как в расписании: полное имя с отчеством прозвучит

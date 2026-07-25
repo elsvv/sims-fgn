@@ -6,10 +6,13 @@ import type { FloorPlan } from '../world/FloorPlan'
 import { NavGrid } from '../world/NavGrid'
 import {
   ARRIVE_BEFORE_MINUTES,
+  errandSpot,
+  errandWindow,
   NpcManager,
   npcRoom,
   roomCells,
   teachingSpot,
+  type ErrandHabit,
   type NpcSpec,
 } from './Npc'
 
@@ -325,5 +328,218 @@ describe('NpcManager: снимок', () => {
     const snap = manager.snapshot()[0]!
     snap.position.x = 999
     expect(manager.find('teacher-alieva')!.actor.position.x).not.toBe(999)
+  })
+})
+
+/* ------------------------------------------------------------------ */
+/* Бытовые вылазки                                                     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Тот же этаж, но с туалетом внизу: два коридорных выхода по краям,
+ * между ними стена. Иначе туалет оказался бы просто продолжением коридора
+ * и проверять было бы нечего.
+ */
+const ERRAND_PLAN: FloorPlan = {
+  id: 'errand-test',
+  name: 'Этаж с туалетом',
+  cellSize: 1,
+  legend: { '#': 'wall', '.': 'floor' },
+  tiles: [
+    '....#....',
+    '....#....',
+    '.........',
+    '.#######.',
+    '.........',
+  ],
+  props: [{ id: 'board', kind: 'whiteboard', col: 1, row: 0, rotation: 0, blocks: true }],
+  rooms: [
+    { id: 'А-204', name: 'Аудитория А-204', col0: 0, row0: 0, col1: 3, row1: 1 },
+    { id: 'А-206', name: 'Аудитория А-206', col0: 5, row0: 0, col1: 8, row1: 1 },
+    { id: 'коридор', name: 'Коридор', col0: 0, row0: 2, col1: 8, row1: 2 },
+    { id: 'туалеты', name: 'Туалеты', col0: 0, row0: 4, col1: 3, row1: 4 },
+  ],
+}
+
+/** Те же числа, что в каталоге: заходит за 75 минут, сидит 45. */
+const RESTROOM: ErrandHabit = {
+  room: 'туалеты',
+  beforeLessonMinutes: 75,
+  durationMinutes: 45,
+}
+
+const ALIEVA_WITH_ERRAND: NpcSpec = { ...ALIEVA, errand: RESTROOM }
+
+function makeErrandGrid(): NavGrid {
+  return new NavGrid(ERRAND_PLAN)
+}
+
+const ERRAND_FROM = FIRST.startMinutes - RESTROOM.beforeLessonMinutes
+const ERRAND_UNTIL = FIRST.startMinutes - ARRIVE_BEFORE_MINUTES
+
+describe('окно бытовой вылазки', () => {
+  it('открывается за столько минут до пары, сколько задано', () => {
+    const lesson = SCHEDULE[0]!
+    const window = errandWindow(RESTROOM, lesson, FIRST.startMinutes)
+    expect(window.room).toBe('туалеты')
+    expect(window.fromMinutes).toBe(ERRAND_FROM)
+    expect(window.lesson).toBe(lesson)
+  })
+
+  it('закрывается не позже, чем пора выходить к аудитории', () => {
+    const lesson = SCHEDULE[0]!
+    const greedy: ErrandHabit = { ...RESTROOM, durationMinutes: 600 }
+    expect(errandWindow(greedy, lesson, FIRST.startMinutes).untilMinutes).toBe(ERRAND_UNTIL)
+  })
+
+  it('бессмысленно поздняя привычка даёт пустое окно', () => {
+    const lesson = SCHEDULE[0]!
+    const late: ErrandHabit = { ...RESTROOM, beforeLessonMinutes: 5, durationMinutes: 20 }
+    const window = errandWindow(late, lesson, FIRST.startMinutes)
+    expect(window.untilMinutes).toBeLessThanOrEqual(window.fromMinutes)
+  })
+
+  it('место в помещении — ближе к середине, а не в углу', () => {
+    const spot = errandSpot(makeErrandGrid(), 'туалеты')
+    expect(spot).toEqual({ col: 1, row: 4 })
+  })
+
+  it('у несуществующего помещения места нет', () => {
+    expect(errandSpot(makeErrandGrid(), 'преподавательская')).toBeNull()
+  })
+})
+
+describe('NpcManager: заход в туалет перед парой', () => {
+  it('до открытия окна преподаватель у себя в коридоре', () => {
+    const grid = makeErrandGrid()
+    const manager = makeManager([ALIEVA_WITH_ERRAND], grid)
+    const npc = manager.find('teacher-alieva')!
+
+    run(manager, grid, 7 * 60, ERRAND_FROM - 5)
+    expect(npcRoom(grid, npc)).toBe('коридор')
+  })
+
+  it('внутри окна его застают в туалете', () => {
+    const grid = makeErrandGrid()
+    const manager = makeManager([ALIEVA_WITH_ERRAND], grid)
+    const npc = manager.find('teacher-alieva')!
+
+    run(manager, grid, ERRAND_FROM, ERRAND_UNTIL - 5)
+    expect(npcRoom(grid, npc)).toBe('туалеты')
+    expect(isMoving(npc.actor)).toBe(false)
+  })
+
+  it('окно короткое: к звонку в туалете уже никого', () => {
+    const grid = makeErrandGrid()
+    const manager = makeManager([ALIEVA_WITH_ERRAND], grid)
+    const npc = manager.find('teacher-alieva')!
+
+    run(manager, grid, ERRAND_FROM, ERRAND_UNTIL + 5)
+    expect(npcRoom(grid, npc)).not.toBe('туалеты')
+  })
+
+  it('выходит вовремя и на собственную пару не опаздывает', () => {
+    const grid = makeErrandGrid()
+    const manager = makeManager([ALIEVA_WITH_ERRAND], grid)
+    const npc = manager.find('teacher-alieva')!
+
+    run(manager, grid, ERRAND_FROM, FIRST.startMinutes)
+    expect(npcRoom(grid, npc)).toBe('А-204')
+    expect(isMoving(npc.actor)).toBe(false)
+  })
+
+  it('успевает провести внутри заметное время, а не забежать и выбежать', () => {
+    const grid = makeErrandGrid()
+    const manager = makeManager([ALIEVA_WITH_ERRAND], grid)
+    const npc = manager.find('teacher-alieva')!
+
+    let insideMinutes = 0
+    for (let minutes = ERRAND_FROM; minutes < ERRAND_UNTIL; minutes += 0.5) {
+      manager.tick(grid, 0.5 / GAME_MINUTES_PER_REAL_SECOND, 0, minutes)
+      if (npcRoom(grid, npc) === 'туалеты') insideMinutes += 0.5
+    }
+    expect(insideMinutes).toBeGreaterThan(20)
+  })
+
+  it('в туалете он развёрнут к комнате, а не к стене', () => {
+    const grid = makeErrandGrid()
+    const manager = makeManager([ALIEVA_WITH_ERRAND], grid)
+    const npc = manager.find('teacher-alieva')!
+
+    run(manager, grid, ERRAND_FROM, ERRAND_UNTIL - 5)
+    expect(Number.isFinite(npc.actor.facing)).toBe(true)
+  })
+
+  it('без привычки никто никуда не сворачивает', () => {
+    const grid = makeErrandGrid()
+    const manager = makeManager([ALIEVA], grid)
+    const npc = manager.find('teacher-alieva')!
+
+    run(manager, grid, ERRAND_FROM, ERRAND_UNTIL - 5)
+    expect(npcRoom(grid, npc)).toBe('коридор')
+  })
+
+  it('в выходной вылазки нет: нет пары — нет и повода', () => {
+    const grid = makeErrandGrid()
+    const manager = makeManager([ALIEVA_WITH_ERRAND], grid)
+    const npc = manager.find('teacher-alieva')!
+
+    run(manager, grid, ERRAND_FROM, ERRAND_UNTIL - 5, 6)
+    expect(npcRoom(grid, npc)).toBe('коридор')
+  })
+
+  it('чужая пара привычку не запускает', () => {
+    const grid = makeErrandGrid()
+    const manager = makeManager([{ ...DOLGORUKOV, errand: RESTROOM }], grid)
+    const npc = manager.find('teacher-dolgorukov')!
+
+    // Окно перед греческим уже открыто, но греческий ведёт не он.
+    run(manager, grid, ERRAND_FROM, ERRAND_UNTIL - 5)
+    expect(npcRoom(grid, npc)).toBe('коридор')
+  })
+
+  it('перед второй парой отлучается так же, как перед первой', () => {
+    const grid = makeErrandGrid()
+    const manager = makeManager([{ ...DOLGORUKOV, errand: RESTROOM }], grid)
+    const npc = manager.find('teacher-dolgorukov')!
+
+    const from = SECOND.startMinutes - RESTROOM.beforeLessonMinutes
+    run(manager, grid, from, SECOND.startMinutes - ARRIVE_BEFORE_MINUTES - 5)
+    expect(npcRoom(grid, npc)).toBe('туалеты')
+
+    run(manager, grid, SECOND.startMinutes - ARRIVE_BEFORE_MINUTES - 5, SECOND.startMinutes)
+    expect(npcRoom(grid, npc)).toBe('А-206')
+  })
+
+  it('распорядок дня читается по минутам', () => {
+    const grid = makeErrandGrid()
+    const manager = makeManager([ALIEVA_WITH_ERRAND], grid)
+    const npc = manager.find('teacher-alieva')!
+
+    expect(manager.planFor(npc, 0, 7 * 60)).toEqual({
+      activity: 'idle',
+      room: 'коридор',
+      lesson: null,
+    })
+    expect(manager.planFor(npc, 0, ERRAND_FROM + 1).activity).toBe('errand')
+    expect(manager.planFor(npc, 0, ERRAND_FROM + 1).room).toBe('туалеты')
+    expect(manager.planFor(npc, 0, ERRAND_UNTIL).activity).toBe('classroom')
+    expect(manager.planFor(npc, 0, ERRAND_UNTIL).room).toBe('А-204')
+    expect(manager.planFor(npc, 0, FIRST.endMinutes + 1).activity).toBe('idle')
+  })
+
+  it('идущая пара важнее бытовых дел', () => {
+    const grid = makeErrandGrid()
+    // Две пары подряд у одного человека: окно вылазки перед второй парой
+    // попадает внутрь первой, и уйти с неё он не должен.
+    const backToBack: Schedule = [
+      { id: 'greek-mon', courseId: 'greek', kind: 'seminar', weekday: 0, period: 0, room: 'А-204' },
+      { id: 'greek-mon-2', courseId: 'greek', kind: 'seminar', weekday: 0, period: 1, room: 'А-206' },
+    ]
+    const manager = makeManager([ALIEVA_WITH_ERRAND], grid, backToBack)
+    const npc = manager.find('teacher-alieva')!
+
+    run(manager, grid, ERRAND_FROM, FIRST.startMinutes + 30)
+    expect(npcRoom(grid, npc)).toBe('А-204')
   })
 })

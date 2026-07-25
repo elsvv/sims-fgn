@@ -114,7 +114,7 @@ export const MAREY_RESTROOM: DialogueChainData = {
           tone: 'bold',
           // Латинская острота доступна только тем, у кого прокачаны древние
           // языки: manus manum lavat — «рука руку моет», Петроний, «Сатирикон».
-          requires: { skillId: 'greek', skillMin: 4 },
+          requires: { skillId: 'ancientLanguages', skillMin: 4 },
           text: 'Manus manum lavat, Александр Владимирович. Но, видимо, не сегодня.',
           effects: { respect: 10, affection: 6 },
           // [допущение]; приём — research/marey-deep.md, §8.4: латинская цитата
@@ -578,7 +578,7 @@ export const MAREY_RESTROOM: DialogueChainData = {
           tone: 'scholarly',
           // Каламбур доступен только знающим латынь: mundus — одновременно
           // «чистый» и «мир», отсюда пословица mundus vult decipi.
-          requires: { skillId: 'greek', skillMin: 4 },
+          requires: { skillId: 'ancientLanguages', skillMin: 4 },
           text: 'Mundus vult decipi. Мы оба про чистоту, а спорим про приличия — и слово, заметьте, одно.',
           effects: { affection: 20, respect: 14 },
           // [допущение]; приём — §8.4: латинская цитата как точка в споре.
@@ -650,9 +650,9 @@ export const MAREY_RESTROOM: DialogueChainData = {
           tone: 'scholarly',
           // Ветка доступна тем, у кого есть языки: тема требует чтения
           // ордонансов в оригинале, о чём он сам и говорит в концовке.
-          requires: { skillId: 'greek', skillMin: 4 },
+          requires: { skillId: 'ancientLanguages', skillMin: 4 },
           text: 'А можно это записать? «Грязь — материя не на своём месте» плюс ордонансы — это же готовая тема.',
-          effects: { respect: 12, affection: 6, skill: { id: 'writing', amount: 1 } },
+          effects: { respect: 12, affection: 6, skill: { id: 'academicWriting', amount: 1 } },
           // [допущение]
           reply:
             '— Записать. — Он смотрит на вас так, будто вы сказали нечто неприличное, а потом лезет во внутренний карман. — Записать, да.',
@@ -733,6 +733,7 @@ export const MAREY_RESTROOM: DialogueChainData = {
       ending: {
         id: 'brotherhood',
         title: 'Братство по оружию',
+        moodletId: 'caughtMareyAtTheSink',
         summary:
           'Вы вышли из туалета соучастниками. С ним это кратчайший путь: он не выносит приклеенной улыбки и мгновенно узнаёт человека, который не притворяется.',
       },
@@ -755,6 +756,7 @@ export const MAREY_RESTROOM: DialogueChainData = {
       ending: {
         id: 'judgement',
         title: 'Осуждение',
+        moodletId: 'mildBewilderment',
         summary:
           'Он не рассердился и не оправдывался — он вернул вам ваш упрёк, разобранный на части. Симпатии заметно меньше; вес, если вы держались твёрдо, скорее вырос.',
       },
@@ -774,6 +776,7 @@ export const MAREY_RESTROOM: DialogueChainData = {
       ending: {
         id: 'duel',
         title: 'Учёная дуэль',
+        moodletId: 'academicDuelDrawn',
         summary:
           'Ничья с ним засчитывается за победу: он опоздал на собственную лекцию и остался этим доволен. Уважения заметно прибавилось, симпатии — самую малость: приятелями вы не стали, собеседниками стали.',
       },
@@ -795,6 +798,7 @@ export const MAREY_RESTROOM: DialogueChainData = {
       ending: {
         id: 'coursework',
         title: 'Тема для курсовой',
+        moodletId: 'courseworkFromNowhere',
         summary:
           'Разговор у раковины кончился темой исследования — с ним это случается чаще, чем можно подумать. Уважение выросло сильно, но теперь его придётся отрабатывать три модуля.',
       },
@@ -816,6 +820,7 @@ export const MAREY_RESTROOM: DialogueChainData = {
       ending: {
         id: 'retreat',
         title: 'Позорное отступление',
+        moodletId: 'heHeldTheDoorOpen',
         summary:
           'Он не разозлился и даже не повысил голоса. Он просто не запомнил вас с хорошей стороны — а это, если подумать, хуже. Потеряно и то и другое, но понемногу.',
       },

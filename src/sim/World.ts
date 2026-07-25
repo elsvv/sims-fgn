@@ -6,7 +6,18 @@ import {
   stopActor,
   type Actor,
 } from './actor/Actor'
-import type { DialogueCatalog, DialogueContext, DialogueNode } from './dialogue/Dialogue'
+import type { ConsequenceChange, ConsequenceReport, DialogueTone } from './dialogue/Consequences'
+import { TONE_LABELS, toneHint } from './dialogue/Consequences'
+import type { DialogueCatalog, DialogueContext } from './dialogue/Dialogue'
+import { isAvailable } from './dialogue/Dialogue'
+import {
+  Conversation,
+  type ChainCatalog,
+  type ChainEffects,
+  type ChainNode,
+  type ConversationOutcome,
+} from './dialogue/DialogueChain'
+import { describeRequirement } from './dialogue/Requirements'
 import { findAdjacentCell, findApproachCell } from './interaction/approach'
 import {
   MoodletList,
@@ -22,7 +33,14 @@ import {
   type Needs,
 } from './needs/needs'
 import { NpcManager, npcRoom, type Npc, type NpcSnapshot, type NpcSpec } from './npc/Npc'
-import { createSkills, gainSkill, isSkillId, type SkillId, type Skills } from './player/Skills'
+import {
+  createSkills,
+  gainSkill,
+  isSkillId,
+  SKILL_LABELS,
+  type SkillId,
+  type Skills,
+} from './player/Skills'
 import {
   openDialogue,
   resolveEffects,
@@ -124,6 +142,78 @@ export interface ActiveDialogueInfo {
   reply: string | null
 }
 
+/**
+ * Реплика многошагового разговора глазами игрока.
+ *
+ * Ни одного числа: до выбора игрок видит текст, тон и — если реплика
+ * закрыта — чего для неё не хватает.
+ */
+export interface ChainOptionInfo {
+  id: string
+  text: string
+  tone: DialogueTone
+  /** Тон одним словом: «дерзко». */
+  toneLabel: string
+  /** Пояснение к тону: «Дерзко. Это заметят.» */
+  toneHint: string
+  /** Можно ли это сказать прямо сейчас. */
+  available: boolean
+  /** Чего не хватает, если нельзя: «нужны древние языки». */
+  lockHint: string | null
+}
+
+/** Что игрок узнаёт сразу после выбора реплики: слова, а не арифметика. */
+export interface ChainConsequenceInfo {
+  /** Авторская фраза: что произошло между вами и почему. */
+  reason: string
+  /** Она же вместе с описанием изменений. */
+  text: string
+  changes: ConsequenceChange[]
+}
+
+/** Итог законченного разговора. */
+export interface ChainOutcomeInfo {
+  endingId: string
+  /** Название исхода: «Братство по оружию». */
+  title: string
+  summary: string
+  /** «В сумме: уважение сильно выросло, симпатия заметно упала.» */
+  closing: string
+  changes: ConsequenceChange[]
+}
+
+/** Многошаговый разговор, идущий прямо сейчас. */
+export interface ActiveChainInfo {
+  chainId: string
+  /** С кем говорим: идентификатор NPC. */
+  npcId: string
+  /** Чьим голосом написана сцена: идентификатор преподавателя. */
+  speakerId: string
+  /** Завязка сцены. Показывается один раз, до первой реплики. */
+  intro: string | null
+  /** Узел, на котором стоим. Пусто, когда разговор кончился. */
+  nodeId: string | null
+  /**
+   * Реплика, на которую игрок сейчас отвечает. Пока на экране реакция
+   * собеседника на прошлый выбор, следующая реплика ещё не показана:
+   * иначе игрок читал бы ответ и продолжение одновременно и в обратном
+   * порядке.
+   */
+  prompt: string | null
+  options: ChainOptionInfo[]
+  /**
+   * Игрок только что ответил и ещё не нажал «Дальше»: на экране реакция
+   * собеседника, а не новый выбор. Без этого признака ответ и следующая
+   * реплика слились бы в одну стену текста.
+   */
+  awaitingContinue: boolean
+  /** Что собеседник ответил на прошлый выбор. */
+  reply: string | null
+  consequence: ChainConsequenceInfo | null
+  /** Итог, если разговор дошёл до концовки. */
+  outcome: ChainOutcomeInfo | null
+}
+
 /** Способ выступить в снимке состояния: только то, что видно в панели. */
 export interface SeminarOptionInfo {
   id: string
@@ -170,9 +260,36 @@ export type SeminarOutcome =
 export interface SocialConfig {
   teachers: TeacherCatalog
   dialogues: DialogueCatalog
+  /** Многошаговые сцены. Не указаны — мир только с короткими обменами. */
+  chains?: ChainCatalog
 }
 
 const EMPTY_SOCIAL: SocialConfig = { teachers: {}, dialogues: {} }
+
+/**
+ * Идущий многошаговый разговор.
+ *
+ * Контекст доступности реплик снят один раз, в момент начала: иначе
+ * на глазах у игрока строки меню появлялись бы и пропадали от его же
+ * собственного выбора. То же правило действует в одношаговых разговорах,
+ * см. social/Conversation.ts.
+ */
+interface ActiveChain {
+  chainId: string
+  npcId: string
+  talk: Conversation
+  context: DialogueContext
+  /** Узел, на котором стоим. null — разговор дошёл до концовки. */
+  node: ChainNode | null
+  /** Последняя реплика собеседника: у концовки это её текст. */
+  line: string
+  /** Показана ли завязка. */
+  introSeen: boolean
+  awaitingContinue: boolean
+  reply: string | null
+  consequence: ConsequenceReport | null
+  outcome: ConversationOutcome | null
+}
 
 export interface WorldSnapshot {
   day: number
@@ -204,6 +321,10 @@ export interface WorldSnapshot {
   relationships: RelationshipInfo[]
   /** Разговор, идущий прямо сейчас, или null. */
   activeDialogue: ActiveDialogueInfo | null
+  /** Многошаговая сцена, идущая прямо сейчас, или null. */
+  activeChain: ActiveChainInfo | null
+  /** Сцены, которые можно завести здесь и сейчас. */
+  availableChains: string[]
   /** Можно ли выступить на семинаре прямо сейчас. */
   canSpeakAtSeminar: boolean
   /** Семинар, на котором игрок сидит, или null. */
@@ -231,6 +352,8 @@ export class World {
   readonly teachers: TeacherCatalog
   /** Узлы разговоров по идентификаторам. */
   readonly dialogues: DialogueCatalog
+  /** Многошаговые сцены по идентификаторам. */
+  readonly chains: ChainCatalog
   /** Отношения со всеми, с кем игрок имел дело. Ключ — идентификатор NPC. */
   readonly relationships = new RelationshipMap()
   player: Actor
@@ -245,6 +368,10 @@ export class World {
    */
   readBooks: string[] = []
   activeDialogue: ActiveDialogue | null = null
+  /** Идущая многошаговая сцена или null. */
+  activeChain: ActiveChain | null = null
+  /** Сцены, которые уже сыграны: одноразовые второй раз не предлагаются. */
+  playedChains: string[] = []
   /**
    * Последнее выступление на семинаре. Живёт до конца той пары, на которой
    * состоялось: панель показывает ответ преподавателя, пока игрок сидит
@@ -267,6 +394,7 @@ export class World {
     this.moodletCatalog = moodletCatalog
     this.teachers = social.teachers
     this.dialogues = social.dialogues
+    this.chains = social.chains ?? {}
     this.grid = new NavGrid(plan)
     this.player = createActor('player', this.grid.gridToWorld(spawn))
     this.npcManager = new NpcManager(npcs, this.grid, study?.config.schedule ?? [])
@@ -387,10 +515,15 @@ export class World {
    * стену нельзя, а гоняться за преподавателем по всему коридору незачем.
    */
   startDialogue(nodeId: string): boolean {
+    // Посреди сцены короткий обмен репликами не начинают: два окна
+    // разговора на экране означали бы, что игрок говорит с двумя людьми
+    // одновременно и ни с кем по-настоящему.
+    if (this.activeChain) return false
+
     const node = this.dialogues[nodeId]
     if (!node) return false
 
-    const npc = this.speakerOf(node)
+    const npc = this.speakerOf(node.speakerId)
     if (!npc) return false
 
     const room = this.currentRoom
@@ -439,6 +572,243 @@ export class World {
   /** Закрывает окно разговора. */
   endDialogue(): void {
     this.activeDialogue = null
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* Многошаговые сцены                                                */
+  /* ---------------------------------------------------------------- */
+
+  /**
+   * Начинает многошаговую сцену.
+   *
+   * Условия те же, что у короткого разговора, плюс два своих: сцена может
+   * быть привязана к помещению и может быть одноразовой. «Марей в туалете»
+   * и то и другое — встретиться там можно только по-настоящему встретившись,
+   * а поймать одного и того же человека у одной и той же раковины дважды
+   * означало бы уже не случайность, а засаду.
+   *
+   * Возвращает false, если сцены нет, собеседника нет рядом, помещение
+   * не то или сцена уже сыграна.
+   */
+  startChainDialogue(chainId: string): boolean {
+    if (!this.canStartChain(chainId)) return false
+
+    const entry = this.chains[chainId]
+    const npc = entry ? this.speakerOf(entry.chain.speakerId) : undefined
+    // Проверку прошли выше; здесь только достаём то, что она уже нашла.
+    if (!entry || !npc) return false
+
+    // Заговорив, персонаж останавливается: уходить от собеседника
+    // посреди собственной реплики он не должен.
+    stopActor(this.player)
+    this.activeInteraction = null
+    this.activeDialogue = null
+
+    const context = this.dialogueContext(npc.id)
+    const talk = new Conversation(entry.chain, context, { skillLabels: SKILL_LABELS })
+    const node = talk.start()
+
+    this.activeChain = {
+      chainId,
+      npcId: npc.id,
+      talk,
+      context,
+      node,
+      line: node.prompt,
+      introSeen: false,
+      awaitingContinue: false,
+      reply: null,
+      consequence: null,
+      outcome: null,
+    }
+    return true
+  }
+
+  /**
+   * Делает шаг разговора: применяет эффекты выбранной реплики и возвращает
+   * ответ собеседника вместе с последствием.
+   *
+   * null — если сцены нет, реплика уже сказана, такой реплики в узле нет
+   * или она игроку недоступна. Недоступную реплику мир отвергает молча:
+   * интерфейс показывает её серой и не даёт нажать, а рухнуть посреди
+   * сцены из-за подделанного нажатия она не должна.
+   */
+  chooseChainOption(optionId: string): ActiveChainInfo | null {
+    const active = this.activeChain
+    if (!active || active.awaitingContinue || active.node === null) return null
+
+    const option = active.talk.currentOptions().find((item) => item.id === optionId)
+    if (!option) return null
+
+    const step = active.talk.choose(optionId)
+    this.applyChainEffects(active.npcId, option.effects)
+
+    // Ответив, игрок завязку уже прочёл: держать её на экране до конца
+    // сцены значит отнимать место у разговора.
+    active.introSeen = true
+    active.awaitingContinue = true
+    active.reply = step.reply
+    active.consequence = step.consequence
+
+    if (step.outcome) {
+      active.node = null
+      active.line = step.outcome.finalLine
+      active.outcome = step.outcome
+      const moodletId = step.outcome.ending.moodletId
+      if (moodletId) this.addMoodletById(moodletId)
+      if (this.chains[active.chainId]?.once && !this.playedChains.includes(active.chainId)) {
+        this.playedChains.push(active.chainId)
+      }
+    } else if (step.node) {
+      active.node = step.node
+      active.line = step.node.prompt
+    }
+
+    return this.activeChainInfo()
+  }
+
+  /**
+   * Убирает реакцию собеседника и открывает следующий выбор — или итог,
+   * если разговор кончился.
+   */
+  continueChainDialogue(): boolean {
+    const active = this.activeChain
+    if (!active || !active.awaitingContinue) return false
+    active.awaitingContinue = false
+    active.reply = null
+    active.consequence = null
+    return true
+  }
+
+  /** Закрывает окно сцены. Применённые эффекты никуда не деваются. */
+  endChainDialogue(): void {
+    this.activeChain = null
+  }
+
+  /** Сцены, которые можно завести прямо сейчас. Во время сцены — ни одной. */
+  availableChains(): string[] {
+    return Object.keys(this.chains).filter((chainId) => this.canStartChain(chainId))
+  }
+
+  /** Сцена, которую можно завести с этим человеком, или null. */
+  chainForNpc(npcId: string): string | null {
+    return (
+      this.availableChains().find((chainId) => {
+        const speakerId = this.chains[chainId]?.chain.speakerId
+        return speakerId !== undefined && this.speakerOf(speakerId)?.id === npcId
+      }) ?? null
+    )
+  }
+
+  /**
+   * Можно ли начать сцену, не начиная её.
+   *
+   * Отдельный метод, а не «попробовать и откатить»: интерфейс спрашивает
+   * об этом каждый снимок, десять раз в секунду, и заводить ради вопроса
+   * настоящий разговор было бы дорого и опасно.
+   */
+  private canStartChain(chainId: string): boolean {
+    // Идущая сцена занимает игрока целиком: ни второй сцены, ни той же
+    // самой заново, пока он не договорил.
+    if (this.activeChain) return false
+
+    const entry = this.chains[chainId]
+    if (!entry) return false
+    if (entry.once && this.playedChains.includes(chainId)) return false
+
+    const npc = this.speakerOf(entry.chain.speakerId)
+    if (!npc) return false
+
+    const room = this.currentRoom
+    if (room === null || npcRoom(this.grid, npc) !== room) return false
+    return entry.room === undefined || entry.room === room
+  }
+
+  /**
+   * Применяет эффекты реплики цепочки — теми же правилами, что и короткий
+   * разговор: прирост уважения проходит через близость взглядов, потеря —
+   * в полном размере, навык через общий замедлитель прокачки.
+   *
+   * Романтическое измерение цепочек в мир пока не приходит: оно включится
+   * вместе с однокурсниками. У преподавателей его нет и быть не может —
+   * за этим следит validateChain, см. sim/social/Romance.ts.
+   */
+  private applyChainEffects(npcId: string, effects: ChainEffects): void {
+    const multiplier = respectMultiplier(this.teacherFor(npcId), this.faction)
+    const gains = resolveEffects(effects, multiplier)
+
+    this.relationships.adjust(npcId, {
+      respect: gains.respect,
+      affection: gains.affection,
+    })
+    this.faction = clampFaction(this.faction + gains.faction)
+    if (gains.skill && isSkillId(gains.skill.id)) {
+      this.trainSkill(gains.skill.id, gains.skill.amount)
+    }
+    if (effects.moodletId) this.addMoodletById(effects.moodletId)
+  }
+
+  /**
+   * Реплики узла глазами игрока: и доступные, и закрытые.
+   *
+   * Закрытые не прячутся, а показываются с подсказкой, чего для них
+   * не хватает. Спрятанная реплика — это реплика, которой для игрока
+   * не существует: он никогда не узнает, что латынь открывала здесь
+   * отдельную ветку, и решит, что сцена маленькая. Серая строка
+   * «нужны древние языки» говорит обратное — сцена больше, чем вы к ней
+   * готовы, — и это ровно то, ради чего в игре вообще учатся.
+   */
+  private chainOptionInfo(active: ActiveChain): ChainOptionInfo[] {
+    const node = active.node
+    if (!node) return []
+    return node.options.map((option) => {
+      const available = option.requires
+        ? isAvailable(option.requires, active.context)
+        : true
+      return {
+        id: option.id,
+        text: option.text,
+        tone: option.tone,
+        toneLabel: TONE_LABELS[option.tone],
+        toneHint: toneHint(option.tone),
+        available,
+        lockHint: available ? null : describeRequirement(option.requires),
+      }
+    })
+  }
+
+  private activeChainInfo(): ActiveChainInfo | null {
+    const active = this.activeChain
+    if (!active) return null
+
+    const outcome = active.outcome
+    return {
+      chainId: active.chainId,
+      npcId: active.npcId,
+      speakerId: active.talk.speakerId,
+      intro: active.introSeen ? null : (active.talk.intro ?? null),
+      nodeId: active.node?.id ?? null,
+      prompt: active.awaitingContinue ? null : active.line,
+      options: active.awaitingContinue ? [] : this.chainOptionInfo(active),
+      awaitingContinue: active.awaitingContinue,
+      reply: active.reply,
+      consequence: active.consequence
+        ? {
+            reason: active.consequence.reason,
+            text: active.consequence.text,
+            changes: active.consequence.changes,
+          }
+        : null,
+      outcome: outcome
+        ? {
+            endingId: outcome.ending.id,
+            title: outcome.report.title,
+            summary: outcome.report.summary,
+            closing: outcome.report.closing,
+            changes: outcome.report.changes,
+          }
+        : null,
+    }
   }
 
   /* ---------------------------------------------------------------- */
@@ -558,11 +928,15 @@ export class World {
     if (!this.readBooks.includes(bookId)) this.readBooks.push(bookId)
   }
 
-  /** Собеседник узла среди жителей этажа. */
-  private speakerOf(node: DialogueNode): Npc | undefined {
-    return this.npcs.find(
-      (npc) => npc.teacherId === node.speakerId || npc.id === node.speakerId,
-    )
+  /**
+   * Собеседник среди жителей этажа.
+   *
+   * Данные называют собеседника то преподавателем, то жителем этажа —
+   * узел написан голосом «marey», а ходит по коридору «teacher-marey», —
+   * поэтому ищем по обоим идентификаторам.
+   */
+  private speakerOf(speakerId: string): Npc | undefined {
+    return this.npcs.find((npc) => npc.teacherId === speakerId || npc.id === speakerId)
   }
 
   /** Преподаватель, стоящий за этим NPC, или undefined, если это не он. */
@@ -678,6 +1052,8 @@ export class World {
       factionLabel: factionLabel(this.faction),
       relationships: this.relationshipInfo(),
       activeDialogue: this.activeDialogueInfo(),
+      activeChain: this.activeChainInfo(),
+      availableChains: this.availableChains(),
       canSpeakAtSeminar: seminar?.canSpeak ?? false,
       seminar,
     }

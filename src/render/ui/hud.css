@@ -415,6 +415,206 @@
 }
 
 /*
+ * Окно многошаговой сцены.
+ *
+ * Низ по центру, а не середина экрана: сцена идёт в те минуты, когда
+ * у обоих скоро пара, и часы в правом верхнем углу закрывать нельзя —
+ * иначе игрок узнаёт о звонке уже из титров разговора. Боковые отступы
+ * такие же, как у панели семинара: окно встаёт между нуждами слева
+ * и навыками справа и ни на что не наползает.
+ *
+ * Верхний предел высоты обязателен: у Марея реплики по восемь строк,
+ * и без него сцена в четыре ответа уехала бы за верхний край экрана.
+ */
+.hud__conversation {
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  width: 640px;
+  max-width: calc(100vw - 540px);
+  min-width: 320px;
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+}
+
+/* Имя и отчество после фамилии — так, как этого человека зовут в ведомости. */
+.conversation__speaker {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  opacity: 0.7;
+  margin-bottom: 10px;
+}
+
+/*
+ * Завязка: обстановка и то, с чего всё началось. Показывается один раз,
+ * поэтому набрана мельче реплики и отделена полосой — это ремарка,
+ * а не чей-то голос.
+ */
+.conversation__intro {
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-line;
+  opacity: 0.7;
+  padding-left: 11px;
+  margin-bottom: 12px;
+  border-left: 2px solid rgba(255, 255, 255, 0.14);
+}
+
+/* Реплика собеседника — самое крупное, что есть на экране. */
+.conversation__prompt {
+  font-size: 16px;
+  line-height: 1.5;
+  white-space: pre-line;
+  margin-bottom: 14px;
+}
+
+.conversation__reply {
+  font-size: 15px;
+  line-height: 1.5;
+  white-space: pre-line;
+  padding: 11px 13px;
+  margin-bottom: 12px;
+  border-radius: 8px;
+  border-left: 2px solid #5c85ea;
+  background: rgba(61, 108, 224, 0.14);
+}
+
+/* Ответ игрока: строка тона сверху, сама реплика под ней. */
+.conversation__option {
+  display: block;
+  line-height: 1.4;
+  margin-bottom: 7px;
+}
+
+.conversation__option-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.conversation__option-text { display: block; }
+
+/*
+ * Тон реплики. Четыре тона — четыре оттенка, но неяркие: это подсказка
+ * о характере фразы, а не кнопка светофора. Игрок должен читать слово,
+ * а не угадывать по цвету, что выгоднее.
+ */
+.conversation__tone {
+  flex: 0 0 auto;
+  font-size: 10px;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  opacity: 0.8;
+}
+
+.conversation__tone[data-tone='cautious'] { color: #9fb4d6; }
+.conversation__tone[data-tone='direct'] { color: #8fd6a1; }
+.conversation__tone[data-tone='bold'] { color: #e5a273; }
+.conversation__tone[data-tone='scholarly'] { color: #c3a8e0; }
+
+/*
+ * Чего не хватает для закрытой реплики. Строка приглушена сильнее самой
+ * реплики: она объясняет, а не зазывает.
+ */
+.conversation__lock {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  opacity: 0.55;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * Закрытая реплика видна, но не нажимается. Полупрозрачность и обычный
+ * курсор — единственное, что её отличает: текст остаётся читаемым,
+ * иначе прятать её было бы честнее.
+ */
+.conversation__option:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.conversation__option:disabled:hover { background: rgba(255, 255, 255, 0.05); }
+
+/*
+ * Последствие выбора: авторская фраза и под ней — что между вами
+ * изменилось. Чисел здесь нет и быть не должно, направление показывает
+ * стрелка: одна — чуть заметно, три — сильно.
+ */
+.conversation__consequence {
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.conversation__reason {
+  font-size: 13px;
+  line-height: 1.45;
+  opacity: 0.9;
+}
+
+.conversation__change {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+.conversation__change-text { flex: 1; min-width: 0; opacity: 0.75; }
+
+.conversation__marker {
+  flex: 0 0 auto;
+  font-size: 12px;
+  letter-spacing: -1px;
+}
+
+.conversation__marker--up { color: #8fd6a1; }
+.conversation__marker--down { color: #e58a83; }
+.conversation__marker--flat { opacity: 0.4; }
+
+/*
+ * Экран итога: название концовки крупно, под ним — что это значило.
+ * Отбит от последней реплики полосой: это уже не голос собеседника,
+ * а то, чем всё кончилось.
+ */
+.conversation__outcome {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.conversation__ending-title {
+  font-size: 19px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.conversation__ending-summary {
+  font-size: 13px;
+  line-height: 1.5;
+  opacity: 0.8;
+  margin-bottom: 10px;
+}
+
+.conversation__totals {
+  padding-top: 8px;
+  margin-bottom: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.conversation__totals .conversation__change:first-child { margin-top: 0; }
+
+/*
  * Панель выступления на семинаре. Низ по центру, а не середина экрана:
  * это не модальное окно, а то, что лежит перед студентом всю пару, —
  * поднять руку можно и через двадцать минут после звонка. Ширина такая же,

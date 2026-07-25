@@ -1,4 +1,4 @@
-import type { NpcSpec } from '../../sim/npc/Npc'
+import type { ErrandHabit, NpcSpec } from '../../sim/npc/Npc'
 import { TEACHERS } from './teachers'
 
 /**
@@ -18,15 +18,61 @@ const HOME_ROOMS: Record<string, string> = {
 const DEFAULT_HOME_ROOM = 'коридор'
 
 /**
+ * Заглянуть в туалет перед своей парой.
+ *
+ * ОКНО ВСТРЕЧИ. Числа подобраны так, чтобы игрок успел дойти, но не
+ * успевал соскучиться.
+ *
+ * Считается это в игровых минутах, а мерить их надо шагами: персонаж идёт
+ * со скоростью 1,4 м/с масштабированного времени, а игровая минута — две
+ * трети такой секунды, то есть примерно клетка в минуту. От своего места
+ * в коридоре до туалета Марею идти около пятнадцати минут — треть вылазки
+ * съедает дорога. Внутри он в итоге стоит примерно полчаса игрового
+ * времени: во вторник перед НИСом — с 11:19 до 11:49.
+ *
+ * Полчаса игровых — это двадцать секунд реальных на обычной скорости.
+ * Дойти успеет тот, кто увидел его в коридоре и сразу пошёл следом, причём
+ * почти с любой точки этажа, — но не тот, кто сначала сходил за кофе.
+ * Ровно то ощущение, ради которого всё затевалось: не «событие ждёт
+ * игрока», а «человек вышел на минуту, и вы его застали».
+ *
+ * ВЫХОД. Конец окна упирается в обязательный срок выхода к аудитории —
+ * за полчаса до звонка, — и зажимается им в самой механике (см.
+ * errandWindow). Опоздать на собственную пару из-за этой привычки
+ * преподаватель не может ни при каких числах в каталоге.
+ */
+const RESTROOM_BEFORE_LESSON: ErrandHabit = {
+  room: 'туалеты',
+  beforeLessonMinutes: 75,
+  durationMinutes: 45,
+}
+
+/**
+ * У кого какие бытовые привычки.
+ *
+ * Пока привычка одна и у одного человека — с неё начинается сцена
+ * «Марей в туалете». Механика при этом общая: чтобы так же вёл себя
+ * Долгоруков, достаточно дописать сюда строчку.
+ */
+const ERRANDS: Record<string, ErrandHabit> = {
+  marey: RESTROOM_BEFORE_LESSON,
+}
+
+/**
  * Шесть преподавателей как жители этажа.
  *
  * Список выводится из каталога TEACHERS, а не пишется руками: новый
  * преподаватель в каталоге автоматически становится человеком в игре,
  * и разойтись эти два списка не могут.
  */
-export const TEACHER_NPCS: NpcSpec[] = Object.values(TEACHERS).map((teacher) => ({
-  id: `teacher-${teacher.id}`,
-  teacherId: teacher.id,
-  courseIds: teacher.courseIds,
-  homeRoom: HOME_ROOMS[teacher.id] ?? DEFAULT_HOME_ROOM,
-}))
+export const TEACHER_NPCS: NpcSpec[] = Object.values(TEACHERS).map((teacher) => {
+  const spec: NpcSpec = {
+    id: `teacher-${teacher.id}`,
+    teacherId: teacher.id,
+    courseIds: teacher.courseIds,
+    homeRoom: HOME_ROOMS[teacher.id] ?? DEFAULT_HOME_ROOM,
+  }
+  const errand = ERRANDS[teacher.id]
+  if (errand) spec.errand = errand
+  return spec
+})
