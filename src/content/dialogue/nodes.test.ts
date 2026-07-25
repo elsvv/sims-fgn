@@ -1,12 +1,18 @@
 import { describe, expect, it } from 'vitest'
+import { COLLAPSE_MOODLET } from '../../sim/daily/Sleep'
 import {
+  availableOptions,
   isUnconditional,
   validateDialogueCatalog,
+  type DialogueContext,
+  type DialogueNode,
   type DialogueOption,
 } from '../../sim/dialogue/Dialogue'
 import { isSkillId } from '../../sim/player/Skills'
 import { createRelationship } from '../../sim/social/Relationship'
+import { MOODLETS } from '../moodlets'
 import { TEACHERS } from '../people/teachers'
+import { MAREY_BROTHERHOOD_MOODLET, MAREY_RESTROOM_HAPPENED } from './marey-restroom'
 import { DIALOGUE_BOOKS, DIALOGUE_NODES, dialogueNodeFor, nodesOf } from './nodes'
 
 const NODES = Object.values(DIALOGUE_NODES)
@@ -257,5 +263,98 @@ describe('выбор узла по знакомству', () => {
 
   it('у постороннего разговора нет', () => {
     expect(dialogueNodeFor('вахтёр', createRelationship())).toBeNull()
+  })
+})
+
+/*
+ * Настроение — не только строчка в панели.
+ *
+ * Условия «пока держится» и «пока не держится» были написаны и покрыты
+ * тестами ещё в механике, но ни одна живая реплика ими не пользовалась:
+ * для игрока их не существовало. Ниже — проверки того, что в каталоге они
+ * есть и что они действительно открывают и закрывают строки меню.
+ */
+describe('настроение открывает и закрывает реплики', () => {
+  const OPTIONS = NODES.flatMap((node) => node.options)
+
+  /** Игрок, которому по знаниям и отношениям открыто всё. */
+  function contextWith(moodlets: string[]): DialogueContext {
+    return {
+      skills: {
+        germanClassics: 6,
+        ancientLanguages: 6,
+        logic: 6,
+        academicWriting: 6,
+        eloquence: 6,
+      },
+      faction: 30,
+      relationship: { affection: 40, respect: 40 },
+      readBooks: Object.keys(DIALOGUE_BOOKS),
+      moodlets,
+      visitedNodes: [MAREY_RESTROOM_HAPPENED],
+      day: 12,
+    }
+  }
+
+  function node(id: string): DialogueNode {
+    const found = DIALOGUE_NODES[id]
+    expect(found, `в каталоге нет узла «${id}»`).toBeDefined()
+    return found as DialogueNode
+  }
+
+  function idsOf(nodeId: string, moodlets: string[]): string[] {
+    return availableOptions(node(nodeId), contextWith(moodlets)).map((option) => option.id)
+  }
+
+  it('в каталоге есть реплика, которую открывает модификатор', () => {
+    expect(OPTIONS.filter((option) => option.requires?.moodletId !== undefined).length)
+      .toBeGreaterThan(0)
+  })
+
+  it('и реплика, которую модификатор закрывает', () => {
+    expect(OPTIONS.filter((option) => option.requires?.withoutMoodletId !== undefined).length)
+      .toBeGreaterThan(0)
+  })
+
+  it('каждый упомянутый модификатор есть в каталоге настроений', () => {
+    for (const node of NODES) {
+      for (const option of node.options) {
+        for (const id of [option.requires?.moodletId, option.requires?.withoutMoodletId]) {
+          if (id === undefined) continue
+          expect(MOODLETS[id], `${node.id}/${option.id}: ${id}`).toBeDefined()
+        }
+      }
+    }
+  })
+
+  it('пока держится встреча у раковины, Марею есть что сказать по-свойски', () => {
+    expect(idsOf('marey-course', [MAREY_BROTHERHOOD_MOODLET])).toContain('still-accomplices')
+  })
+
+  it('когда отпустило, эта реплика пропадает, а память о встрече остаётся', () => {
+    const ids = idsOf('marey-course', [])
+    expect(ids).not.toContain('still-accomplices')
+    // Условие именно на настроение, а не на память: сам разговор был,
+    // и реплика о нём никуда не делась.
+    expect(ids).toContain('remember-restroom')
+  })
+
+  it('чужое настроение эту реплику не открывает', () => {
+    expect(idsOf('marey-course', [COLLAPSE_MOODLET])).not.toContain('still-accomplices')
+  })
+
+  it('на трезвую голову Долгорукову можно предложить решить задачу с ходу', () => {
+    expect(idsOf('dolgorukov-hall', [])).toContain('solve-on-the-spot')
+  })
+
+  it('а отрубившись где стоял — уже нельзя', () => {
+    const ids = idsOf('dolgorukov-hall', [COLLAPSE_MOODLET])
+    expect(ids).not.toContain('solve-on-the-spot')
+    // Меню при этом не пустеет: безусловные реплики на месте.
+    expect(ids.length).toBeGreaterThanOrEqual(3)
+  })
+
+  it('другое неприятное настроение эту реплику не закрывает', () => {
+    expect(idsOf('dolgorukov-hall', ['waitedForElevator'])).toContain('solve-on-the-spot')
   })
 })
