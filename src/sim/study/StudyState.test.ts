@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Course, CourseCatalog } from './Course'
 import type { EssayTask } from './Essay'
-import type { Schedule } from './Schedule'
+import { occurrenceId, type Schedule } from './Schedule'
 import { StudyState, type StudyConfig } from './StudyState'
 
 const GREEK: Course = {
@@ -47,6 +47,10 @@ const ESSAYS: EssayTask[] = [
 
 const CONFIG: StudyConfig = { courses: COURSES, schedule: SCHEDULE, essays: ESSAYS }
 
+/** Один и тот же понедельничный семинар на первой и на второй неделе. */
+const FIRST_MONDAY_GREEK = occurrenceId(0, 'g-mon')
+const NEXT_MONDAY_GREEK = occurrenceId(7, 'g-mon')
+
 describe('StudyState', () => {
   it('отдаёт статус курса', () => {
     const study = new StudyState(CONFIG)
@@ -62,8 +66,8 @@ describe('StudyState', () => {
 
   it('отмечает посещение и учитывает его в оценке за работу', () => {
     const study = new StudyState(CONFIG)
-    study.attendLesson('g-mon', 'greek', 'present')
-    study.attendLesson('g-mon-2', 'greek', 'absent')
+    study.attendLesson(occurrenceId(0, 'g-mon'), 'greek', 'present')
+    study.attendLesson(occurrenceId(7, 'g-mon'), 'greek', 'absent')
     expect(study.attendance.countByCourse('greek')).toEqual({ present: 1, late: 0, absent: 1 })
   })
 
@@ -114,5 +118,57 @@ describe('StudyState', () => {
       'greek',
       'logic',
     ])
+  })
+})
+
+describe('StudyState: выступления на семинарах', () => {
+  it('мир без вариантов выступления отдаёт пустой список', () => {
+    expect(new StudyState(CONFIG).seminarOptions).toEqual([])
+  })
+
+  it('отдаёт варианты, объявленные в конфигурации', () => {
+    const options = [
+      {
+        id: 'retell',
+        label: 'Пересказать прочитанное',
+        hint: 'Безопасно и невысоко.',
+        skills: [],
+        factionShift: 0,
+        floor: 3,
+        ceiling: 7,
+      },
+    ]
+    const study = new StudyState({ ...CONFIG, seminarOptions: options })
+    expect(study.seminarOptions).toEqual(options)
+  })
+
+  it('на новой паре игрок ещё не выступал', () => {
+    expect(new StudyState(CONFIG).hasSpokenAt(FIRST_MONDAY_GREEK)).toBe(false)
+  })
+
+  it('выступление помечает пару и ставит оценку', () => {
+    const study = new StudyState(CONFIG)
+    study.speakAt(FIRST_MONDAY_GREEK, 'greek', 8)
+    expect(study.hasSpokenAt(FIRST_MONDAY_GREEK)).toBe(true)
+    expect(study.gradebook.gradeFor('greek', 'classwork')).toBe(8)
+  })
+
+  it('пометка стоит на конкретной паре, а не на курсе', () => {
+    const study = new StudyState(CONFIG)
+    study.speakAt(FIRST_MONDAY_GREEK, 'greek', 8)
+    expect(study.hasSpokenAt(occurrenceId(0, 'l-mon'))).toBe(false)
+  })
+
+  it('пометка не переезжает на ту же пару следующей недели', () => {
+    const study = new StudyState(CONFIG)
+    study.speakAt(FIRST_MONDAY_GREEK, 'greek', 8)
+    expect(study.hasSpokenAt(NEXT_MONDAY_GREEK)).toBe(false)
+  })
+
+  it('оценки за разные пары усредняются, а не перезаписываются', () => {
+    const study = new StudyState(CONFIG)
+    study.speakAt(FIRST_MONDAY_GREEK, 'greek', 10)
+    study.speakAt(NEXT_MONDAY_GREEK, 'greek', 4)
+    expect(study.gradebook.gradeFor('greek', 'classwork')).toBe(7)
   })
 })

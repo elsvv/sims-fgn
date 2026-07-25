@@ -3,6 +3,7 @@ import {
   lessonAt,
   lessonsOnDay,
   nextLessonOnDay,
+  occurrenceId,
   PERIODS,
   periodOf,
   validateSchedule,
@@ -81,5 +82,25 @@ describe('расписание', () => {
     expect(nextLessonOnDay(SCHEDULE, 0, 0)?.id).toBe('l1')
     expect(nextLessonOnDay(SCHEDULE, 0, PERIODS[0]!.endMinutes)?.id).toBe('l2')
     expect(nextLessonOnDay(SCHEDULE, 0, 23 * 60)).toBeNull()
+  })
+
+  it('каждый понедельник отдаёт один и тот же слот расписания', () => {
+    // Ровно из-за этого журналы не могут ключеваться идентификатором слота.
+    expect(lessonAt(SCHEDULE, 0, PERIODS[0]!.startMinutes + 10)?.id).toBe('l1')
+    expect(lessonAt(SCHEDULE, 7, PERIODS[0]!.startMinutes + 10)?.id).toBe('l1')
+  })
+})
+
+describe('идентификатор состоявшейся пары', () => {
+  it('различает один и тот же слот в разные дни', () => {
+    expect(occurrenceId(0, 'l1')).not.toBe(occurrenceId(7, 'l1'))
+  })
+
+  it('в один день различает разные слоты', () => {
+    expect(occurrenceId(0, 'l1')).not.toBe(occurrenceId(0, 'l2'))
+  })
+
+  it('на одну и ту же пару отвечает одинаково', () => {
+    expect(occurrenceId(0, 'l1')).toBe(occurrenceId(0, 'l1'))
   })
 })

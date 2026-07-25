@@ -1,9 +1,10 @@
 import { classifyArrival, type AttendanceMark } from './Attendance'
-import { lessonAt, lessonsOnDay, periodOf, type Schedule } from './Schedule'
+import { lessonAt, lessonsOnDay, occurrenceId, periodOf, type Schedule } from './Schedule'
 
 /** Что нужно проставить в журнал посещаемости. */
 export interface AttendanceDecision {
-  lessonId: string
+  /** Конкретная состоявшаяся пара: день плюс слот расписания. */
+  occurrenceId: string
   courseId: string
   mark: AttendanceMark
 }
@@ -17,8 +18,8 @@ export interface AttendanceContext {
   minutes: number
   /** Помещение, где стоит игрок: «А-204», «коридор». null — нигде конкретно. */
   room: string | null
-  /** Уже проставленная отметка за занятие или null, если её ещё нет. */
-  markFor: (lessonId: string) => AttendanceMark | null
+  /** Уже проставленная отметка за эту пару или null, если её ещё нет. */
+  markFor: (occurrenceId: string) => AttendanceMark | null
 }
 
 /**
@@ -30,8 +31,11 @@ export interface AttendanceContext {
  * Стоять в коридоре под дверью недостаточно: аудитория считается
  * по клетке, на которой стоит персонаж.
  *
+ * Отметки ключуются днём, а не строкой расписания: понедельничная пара
+ * бывает каждую неделю, и присутствие на первой не закрывает остальные.
+ *
  * Функция чистая: она ничего не меняет, а возвращает список решений.
- * Повторный вызов не перезапишет уже проставленную отметку — занятия
+ * Повторный вызов не перезапишет уже проставленную отметку — пары
  * с отметкой в решения не попадают.
  */
 export function decideAttendance(context: AttendanceContext): AttendanceDecision[] {
@@ -39,11 +43,12 @@ export function decideAttendance(context: AttendanceContext): AttendanceDecision
   const decisions: AttendanceDecision[] = []
 
   const current = lessonAt(schedule, day, minutes)
-  if (current && room !== null && room === current.room && markFor(current.id) === null) {
+  const currentId = current ? occurrenceId(day, current.id) : null
+  if (current && currentId && room !== null && room === current.room && markFor(currentId) === null) {
     const period = periodOf(current.period)
     if (period) {
       decisions.push({
-        lessonId: current.id,
+        occurrenceId: currentId,
         courseId: current.courseId,
         mark: classifyArrival(period, minutes),
       })
@@ -54,8 +59,9 @@ export function decideAttendance(context: AttendanceContext): AttendanceDecision
     const period = periodOf(lesson.period)
     if (!period) continue
     if (minutes < period.endMinutes) continue
-    if (markFor(lesson.id) !== null) continue
-    decisions.push({ lessonId: lesson.id, courseId: lesson.courseId, mark: 'absent' })
+    const id = occurrenceId(day, lesson.id)
+    if (markFor(id) !== null) continue
+    decisions.push({ occurrenceId: id, courseId: lesson.courseId, mark: 'absent' })
   }
 
   return decisions

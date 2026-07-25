@@ -61,6 +61,19 @@ export function periodOf(index: number): Period | undefined {
   return PERIODS[index]
 }
 
+/**
+ * Идентификатор состоявшейся пары: день плюс слот расписания.
+ *
+ * Расписание описывает недельный ритм — «греческий по понедельникам, первой
+ * парой». Слот повторяется каждую неделю, и lessonAt всякий понедельник
+ * возвращает тот же объект с тем же id. Журналы же ведут счёт конкретным
+ * состоявшимся парам, а не строкам расписания: отметка о присутствии стоит
+ * на дне, и выступают на каждом семинаре, а не один раз за модуль.
+ */
+export function occurrenceId(day: number, lessonId: string): string {
+  return `${day}:${lessonId}`
+}
+
 /** Возвращает список ошибок расписания. Пустой список означает, что оно корректно. */
 export function validateSchedule(schedule: Schedule): string[] {
   const errors: string[] = []

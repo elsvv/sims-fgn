@@ -1,3 +1,5 @@
+import type { SkillId } from '../player/Skills'
+
 /** Минимальная положительная оценка. Ниже — академическая задолженность. */
 export const PASSING_GRADE = 4
 
@@ -35,6 +37,13 @@ export interface Course {
   short: string
   teacherId: string
   assessments: Assessment[]
+  /**
+   * Навыки, на которых держится дисциплина. По ним считается подготовленность
+   * к выступлению на семинаре: греческий спрашивает древние языки, логика —
+   * логику. Поле необязательное: курс без объявленных навыков опирается
+   * только на выбранный способ выступать.
+   */
+  skillIds?: readonly SkillId[]
 }
 
 export type CourseCatalog = Record<string, Course>

@@ -26,15 +26,22 @@ export function classifyArrival(period: Period, arrivalMinutes: number): Attenda
   return 'late'
 }
 
+/**
+ * Журнал посещаемости.
+ *
+ * Ключ — идентификатор состоявшейся пары (occurrenceId в Schedule), а не слот
+ * расписания: «греческий по понедельникам» бывает шесть раз за модуль, и
+ * каждый понедельник заслуживает своей отметки.
+ */
 export class AttendanceLog {
   private entries: Record<string, AttendanceEntry> = {}
 
-  mark(lessonId: string, courseId: string, mark: AttendanceMark): void {
-    this.entries[lessonId] = { courseId, mark }
+  mark(occurrenceId: string, courseId: string, mark: AttendanceMark): void {
+    this.entries[occurrenceId] = { courseId, mark }
   }
 
-  markFor(lessonId: string): AttendanceMark | null {
-    return this.entries[lessonId]?.mark ?? null
+  markFor(occurrenceId: string): AttendanceMark | null {
+    return this.entries[occurrenceId]?.mark ?? null
   }
 
   countByCourse(courseId: string): AttendanceCounts {

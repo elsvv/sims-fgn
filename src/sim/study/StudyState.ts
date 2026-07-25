@@ -3,11 +3,17 @@ import { PASSING_GRADE, type Course, type CourseCatalog } from './Course'
 import { EssayJournal, type EssayTask } from './Essay'
 import { Gradebook } from './Gradebook'
 import type { Schedule } from './Schedule'
+import type { SeminarOption } from './Seminar'
 
 export interface StudyConfig {
   courses: CourseCatalog
   schedule: Schedule
   essays: EssayTask[]
+  /**
+   * Способы выступить на семинаре. Необязательны: мир без них работает,
+   * просто выступать в нём нечем — так собраны тесты посещаемости.
+   */
+  seminarOptions?: readonly SeminarOption[]
 }
 
 export interface CourseStatus {
@@ -32,12 +38,40 @@ export class StudyState {
   /** Накопленные оценки за выступления, чтобы усреднять их, а не перезаписывать. */
   private seminarScores: Record<string, number[]> = {}
 
+  /**
+   * Пары, на которых игрок уже выступал. Ключ — конкретная состоявшаяся пара
+   * (occurrenceId в Schedule): дважды за одну пару слова не дают, а на
+   * следующей неделе тот же семинар начинается с чистого листа.
+   */
+  private spokenOccurrences: string[] = []
+
   constructor(config: StudyConfig) {
     this.config = config
   }
 
-  attendLesson(lessonId: string, courseId: string, mark: AttendanceMark): void {
-    this.attendance.mark(lessonId, courseId, mark)
+  /** @param occurrenceId конкретная состоявшаяся пара: день плюс слот расписания. */
+  attendLesson(occurrenceId: string, courseId: string, mark: AttendanceMark): void {
+    this.attendance.mark(occurrenceId, courseId, mark)
+  }
+
+  /** Способы выступить на семинаре. Пустой список — выступать нечем. */
+  get seminarOptions(): readonly SeminarOption[] {
+    return this.config.seminarOptions ?? []
+  }
+
+  hasSpokenAt(occurrenceId: string): boolean {
+    return this.spokenOccurrences.includes(occurrenceId)
+  }
+
+  /**
+   * Записывает выступление на конкретной паре: оценка идёт в журнал,
+   * а пара помечается — второй раз за неё слова не дают.
+   */
+  speakAt(occurrenceId: string, courseId: string, grade: number): void {
+    if (!this.spokenOccurrences.includes(occurrenceId)) {
+      this.spokenOccurrences.push(occurrenceId)
+    }
+    this.recordSeminar(courseId, grade)
   }
 
   /**

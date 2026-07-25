@@ -2,6 +2,7 @@ import type { CourseCatalog } from '../../sim/study/Course'
 import type { EssayTask } from '../../sim/study/Essay'
 import type { Schedule } from '../../sim/study/Schedule'
 import type { StudyConfig } from '../../sim/study/StudyState'
+import { SEMINAR_OPTIONS } from './seminarOptions'
 
 /**
  * Дисциплины первого курса ОП «Философия» ФГН НИУ ВШЭ.
@@ -14,6 +15,7 @@ export const COURSES: CourseCatalog = {
     title: 'Древнегреческий язык',
     short: 'Греческий',
     teacherId: 'alieva',
+    skillIds: ['ancientLanguages'],
     // Настоящая формула: 0.3 текущий контроль + 0.3 экспресс-контрольные + 0.4 экзамен
     assessments: [
       { id: 'classwork', label: 'Работа на занятиях', weight: 0.3, kind: 'seminar', blocking: false },
@@ -27,6 +29,7 @@ export const COURSES: CourseCatalog = {
     title: 'НИС «Жанры и методы философского исследования»',
     short: 'НИС',
     teacherId: 'marey',
+    skillIds: ['ancientLanguages', 'academicWriting'],
     // Настоящая формула: 0.33 домашние + 0.34 работа на семинарах + 0.33 финальное эссе
     assessments: [
       { id: 'homework', label: 'Домашние задания', weight: 0.33, kind: 'homework', blocking: false },
@@ -40,6 +43,7 @@ export const COURSES: CourseCatalog = {
     title: 'Логика',
     short: 'Логика',
     teacherId: 'dolgorukov',
+    skillIds: ['logic'],
     assessments: [
       { id: 'seminars', label: 'Работа на семинарах', weight: 0.3, kind: 'seminar', blocking: false },
       { id: 'problems', label: 'Задачи', weight: 0.3, kind: 'homework', blocking: false },
@@ -52,6 +56,7 @@ export const COURSES: CourseCatalog = {
     title: 'История философии',
     short: 'История философии',
     teacherId: 'mikhailovsky',
+    skillIds: ['germanClassics'],
     assessments: [
       { id: 'seminars', label: 'Работа на семинарах', weight: 0.3, kind: 'seminar', blocking: false },
       { id: 'essay', label: 'Эссе', weight: 0.3, kind: 'essay', blocking: false },
@@ -64,6 +69,7 @@ export const COURSES: CourseCatalog = {
     title: 'НИС «Основные темы и методы философского познания»',
     short: 'Онтология',
     teacherId: 'krechetova',
+    skillIds: ['germanClassics', 'academicWriting'],
     assessments: [
       { id: 'seminars', label: 'Работа на семинарах', weight: 0.4, kind: 'seminar', blocking: false },
       { id: 'essay', label: 'Итоговое эссе', weight: 0.6, kind: 'essay', blocking: false },
@@ -125,4 +131,5 @@ export const STUDY_CONFIG: StudyConfig = {
   courses: COURSES,
   schedule: SCHEDULE,
   essays: ESSAYS,
+  seminarOptions: SEMINAR_OPTIONS,
 }
