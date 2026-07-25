@@ -145,7 +145,9 @@ test('студент выступает на семинаре и слышит о
   // --- После выступления ---
   await seminar.getByText('Сесть на место', { exact: true }).click()
   await expect(reply).toHaveCount(0)
-  await expect(seminar.locator('.seminar__closed')).toHaveText('Вы уже выступали')
+  // Причина отказа целиком — «Вы уже выступали — слово дают раз за пару».
+  // Сверяется по вхождению: хвост фразы менялся, а смысл нет.
+  await expect(seminar.locator('.seminar__closed')).toContainText('Вы уже выступали')
 
   expect(
     consoleErrors.filter((text) => !text.includes('Download the React DevTools')),

@@ -160,8 +160,13 @@ test('сцена этажа рисуется, интерфейс на месте
   // в каком помещении стоит персонаж.
   const schedule = page.locator('.hud__schedule')
   await expect(schedule.getByText('Расписание на сегодня')).toBeVisible()
-  await expect(schedule.locator('.lesson')).toHaveCount(2)
-  await expect(schedule.locator('.lesson__room').first()).toHaveText('А-204')
+  // Пар в учебном дне три-четыре, точное число задаётся расписанием
+  // (src/content/courses). Тест держится за правило, а не за сегодняшнее
+  // число: расписание перекраивали уже дважды, и оба раза первым падал он.
+  expect(await schedule.locator('.lesson').count()).toBeGreaterThanOrEqual(3)
+  // В строке пары стоит и вид занятия, и аудитория: «семинар, А-204».
+  // Тесту важна аудитория — она связывает расписание с построенным этажом.
+  await expect(schedule.locator('.lesson__room').first()).toContainText('А-204')
   await expect(schedule.locator('.hud__where')).toHaveText('Сейчас: коридор')
 
   // Этаж обитаем: шестеро преподавателей стоят в сцене и подписаны фамилиями.
