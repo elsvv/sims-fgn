@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { availableOptions, isAvailable, type DialogueContext, type DialogueNode } from './Dialogue'
+import {
+  availableOptions,
+  isAvailable,
+  isUnconditional,
+  validateDialogueCatalog,
+  validateDialogueNode,
+  type DialogueContext,
+  type DialogueNode,
+} from './Dialogue'
 
 const CONTEXT: DialogueContext = {
   skills: { greek: 6, logic: 2, german: 0, writing: 4, rhetoric: 5, stamina: 3 },
@@ -85,5 +93,99 @@ describe('доступные реплики', () => {
       readBooks: [],
     }
     expect(availableOptions(NODE, poor).map((o) => o.id)).toEqual(['safe'])
+  })
+})
+
+describe('безусловность реплики', () => {
+  it('реплика без поля требований безусловна', () => {
+    expect(isUnconditional({ id: 'a', text: 'Молчать', effects: {}, reply: 'Ага.' })).toBe(true)
+  })
+
+  it('пустой объект требований — тоже без условий', () => {
+    expect(
+      isUnconditional({ id: 'a', text: 'Молчать', requires: {}, effects: {}, reply: 'Ага.' }),
+    ).toBe(true)
+  })
+
+  it('любое требование делает реплику условной', () => {
+    expect(
+      isUnconditional({
+        id: 'a',
+        text: 'Молчать',
+        requires: { respectMin: 0 },
+        effects: {},
+        reply: 'Ага.',
+      }),
+    ).toBe(false)
+  })
+})
+
+describe('проверка узла', () => {
+  it('корректный узел не даёт ошибок', () => {
+    expect(validateDialogueNode(NODE)).toEqual([])
+  })
+
+  it('ругается на узел без единой безусловной реплики', () => {
+    const locked: DialogueNode = {
+      ...NODE,
+      options: NODE.options.filter((option) => option.requires !== undefined),
+    }
+    const errors = validateDialogueNode(locked)
+    expect(errors.length).toBe(1)
+    expect(errors[0]).toContain('безусловной')
+  })
+
+  it('узел с пустым требованием безусловной репликой считается корректным', () => {
+    const node: DialogueNode = {
+      ...NODE,
+      options: [{ id: 'safe', text: 'Промолчать', requires: {}, effects: {}, reply: 'Понятно.' }],
+    }
+    expect(validateDialogueNode(node)).toEqual([])
+  })
+
+  it('ругается на узел без реплик', () => {
+    const errors = validateDialogueNode({ ...NODE, options: [] })
+    expect(errors.length).toBe(1)
+    expect(errors[0]).toContain('нет ни одной реплики')
+  })
+
+  it('ругается на повторяющиеся идентификаторы реплик', () => {
+    const first = NODE.options[0]!
+    const errors = validateDialogueNode({ ...NODE, options: [first, { ...first }] })
+    expect(errors.some((error) => error.includes('повторяется'))).toBe(true)
+  })
+
+  it('ругается на пустые тексты', () => {
+    const errors = validateDialogueNode({
+      id: 'broken',
+      speakerId: ' ',
+      prompt: '',
+      options: [{ id: 'a', text: '  ', effects: {}, reply: '' }],
+    })
+    expect(errors.length).toBe(4)
+  })
+
+  it('называет узел, в котором нашлась ошибка', () => {
+    const errors = validateDialogueNode({ ...NODE, id: 'marey-hall', options: [] })
+    expect(errors[0]).toContain('marey-hall')
+  })
+})
+
+describe('проверка каталога', () => {
+  it('корректный каталог не даёт ошибок', () => {
+    expect(validateDialogueCatalog({ [NODE.id]: NODE })).toEqual([])
+  })
+
+  it('ругается на узел, лежащий не под своим ключом', () => {
+    const errors = validateDialogueCatalog({ 'другой-ключ': NODE })
+    expect(errors.length).toBe(1)
+    expect(errors[0]).toContain('другой-ключ')
+  })
+
+  it('собирает ошибки со всех узлов', () => {
+    const broken: DialogueNode = { id: 'broken', speakerId: 'marey', prompt: 'И?', options: [] }
+    const errors = validateDialogueCatalog({ [NODE.id]: NODE, broken })
+    expect(errors.length).toBe(1)
+    expect(errors[0]).toContain('broken')
   })
 })

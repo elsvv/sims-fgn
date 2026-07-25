@@ -51,6 +51,17 @@ export interface DialogueNode {
   options: DialogueOption[]
 }
 
+export type DialogueCatalog = Record<string, DialogueNode>
+
+/**
+ * Реплика без единого условия. Пустой объект требований — тоже без условий:
+ * `isAvailable({}, ...)` всегда истинно, и проверяльщик обязан считать
+ * такую реплику безусловной, иначе он ловит воображаемые ошибки.
+ */
+export function isUnconditional(option: DialogueOption): boolean {
+  return option.requires === undefined || Object.keys(option.requires).length === 0
+}
+
 export function isAvailable(
   requirement: DialogueRequirement,
   context: DialogueContext,
@@ -95,4 +106,65 @@ export function availableOptions(
   return node.options.filter((option) =>
     option.requires ? isAvailable(option.requires, context) : true,
   )
+}
+
+/**
+ * Возвращает список человекочитаемых ошибок узла.
+ * Пустой список означает, что узел корректен.
+ *
+ * Главная проверка — последняя: у узла обязана быть хотя бы одна безусловная
+ * реплика. Узел, все реплики которого что-то требуют, однажды откроется
+ * игроку пустым меню, из которого нельзя ни ответить, ни выйти по-человечески.
+ * Поймать это глазами нельзя — условий много и они разные, — поэтому ловим
+ * тестом по всему каталогу.
+ */
+export function validateDialogueNode(node: DialogueNode): string[] {
+  const errors: string[] = []
+  const where = `Узел «${node.id}»`
+
+  if (node.speakerId.trim() === '') errors.push(`${where}: не указан собеседник`)
+  if (node.prompt.trim() === '') errors.push(`${where}: пустая реплика собеседника`)
+
+  if (node.options.length === 0) {
+    errors.push(`${where}: нет ни одной реплики игрока`)
+    return errors
+  }
+
+  const seen = new Set<string>()
+  for (const option of node.options) {
+    if (seen.has(option.id)) {
+      errors.push(`${where}: идентификатор реплики «${option.id}» повторяется`)
+    }
+    seen.add(option.id)
+
+    if (option.text.trim() === '') errors.push(`${where}: у реплики «${option.id}» пустой текст`)
+    if (option.reply.trim() === '') {
+      errors.push(`${where}: на реплику «${option.id}» собеседник ничего не отвечает`)
+    }
+  }
+
+  if (!node.options.some(isUnconditional)) {
+    errors.push(
+      `${where}: нет ни одной безусловной реплики — меню может оказаться пустым`,
+    )
+  }
+
+  return errors
+}
+
+/**
+ * Проверяет каталог целиком: каждый узел по отдельности плюс то,
+ * что ключ каталога совпадает с идентификатором узла. Расхождение
+ * ключа и идентификатора не ломает выборку по ключу, но ломает всё,
+ * что ищет узел по его собственному id.
+ */
+export function validateDialogueCatalog(catalog: DialogueCatalog): string[] {
+  const errors: string[] = []
+  for (const [key, node] of Object.entries(catalog)) {
+    if (node.id !== key) {
+      errors.push(`Каталог: узел «${node.id}» лежит под ключом «${key}»`)
+    }
+    errors.push(...validateDialogueNode(node))
+  }
+  return errors
 }
