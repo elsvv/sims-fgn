@@ -1,4 +1,22 @@
-import { useWorld } from '../useWorld'
+import { minutesUntilMorning } from '../../sim/daily/DayCycle'
+import { describeWait } from '../../sim/text/russian'
+import { useWorld, useWorldSnapshot } from '../useWorld'
+
+/**
+ * Начиная с какой длины сна игрока надо предупредить.
+ *
+ * Сон в этой игре один — до утра, — и вечером это ровно то, чего игрок
+ * хочет. Но кнопка стоит в меню скамейки круглые сутки, и нажатая в восемь
+ * утра она отправляет спать двадцать три часа: день пропадает целиком,
+ * все пары уходят в прогулы, а нужды к утру на нуле. Механику это не
+ * ломает — «до утра» честно означает именно это, — но узнать об этом
+ * из подписи «до утра» нельзя, и первым, кто на это наступил, был
+ * проверяльщик, лёгший на скамейку в четверть восьмого утра.
+ *
+ * Тринадцать часов — это отход ко сну в шесть вечера. Раньше — уже не
+ * «лечь спать», а «вычеркнуть день».
+ */
+const LONG_SLEEP_MINUTES = 13 * 60
 
 export function InteractionMenu({
   propId,
@@ -8,6 +26,7 @@ export function InteractionMenu({
   onClose: () => void
 }) {
   const world = useWorld()
+  const snapshot = useWorldSnapshot()
   if (!propId) return null
 
   const placement = world.plan.props.find((p) => p.id === propId)
@@ -45,8 +64,16 @@ export function InteractionMenu({
             onClose()
           }}
         >
-          <span>{sleepSpot.actionLabel}</span>
-          <span className="hud__menu-time">до утра</span>
+          <span className="hud__menu-line">
+            <span>{sleepSpot.actionLabel}</span>
+            <span className="hud__menu-time">до утра</span>
+          </span>
+          {minutesUntilMorning(snapshot.minutes) > LONG_SLEEP_MINUTES && (
+            <span className="hud__menu-note">
+              Сейчас день: проспите {describeWait(minutesUntilMorning(snapshot.minutes))} и
+              пропустите всё сегодняшнее расписание
+            </span>
+          )}
         </button>
       )}
       <button

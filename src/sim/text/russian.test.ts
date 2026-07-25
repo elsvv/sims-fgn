@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   cardinal,
   describeHours,
+  describeWait,
   enumerate,
   gradeWord,
   lowerFirst,
@@ -106,5 +107,44 @@ describe('регистр первой буквы', () => {
   it('пустую строку не ломает', () => {
     expect(lowerFirst('')).toBe('')
     expect(upperFirst('')).toBe('')
+  })
+})
+
+describe('сколько ещё ждать', () => {
+  it('минуты округляются до пяти и называются словом', () => {
+    expect(describeWait(3)).toBe('пять минут')
+    expect(describeWait(12)).toBe('десять минут')
+    expect(describeWait(23)).toBe('двадцать пять минут')
+  })
+
+  it('получас и полтора часа названы так, как их называют вслух', () => {
+    expect(describeWait(29)).toBe('полчаса')
+    expect(describeWait(31)).toBe('полчаса')
+    expect(describeWait(88)).toBe('полтора часа')
+  })
+
+  it('час — это час, а не шестьдесят минут', () => {
+    expect(describeWait(58)).toBe('час')
+    expect(describeWait(62)).toBe('час')
+  })
+
+  it('дальше идут часы', () => {
+    expect(describeWait(112)).toBe('два часа')
+    expect(describeWait(300)).toBe('пять часов')
+  })
+
+  it('вот-вот — это минута, а не «меньше минуты»', () => {
+    // Фраза встаёт в «через …» и в «ещё … — и…», и «через меньше минуты»
+    // там не читается.
+    expect(describeWait(0)).toBe('минуту')
+    expect(describeWait(1)).toBe('минуту')
+  })
+
+  it('фраза годится и после «через», и после «ещё»', () => {
+    for (const minutes of [0, 4, 17, 30, 46, 60, 90, 130, 400]) {
+      const wait = describeWait(minutes)
+      expect(`через ${wait}`, String(minutes)).not.toMatch(/\d/)
+      expect(wait, String(minutes)).not.toMatch(/^\s|\s$/)
+    }
   })
 })

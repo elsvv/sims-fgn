@@ -487,6 +487,11 @@ export interface WorldSnapshot {
   seminar: SeminarInfo | null
   /** Сколько игровых минут осталось до того, как персонаж вырубится сам. */
   minutesUntilCurfew: number
+  /**
+   * Где на этом этаже вообще можно лечь: «на скамейке в коридоре».
+   * null — негде, и тогда ночь кончится там, где игрок стоит.
+   */
+  sleepPlace: string | null
   /** Экран, прерывающий игру: итоги дня, воскресенье, эпилог. */
   dayScreen: DayScreenInfo | null
 }
@@ -756,6 +761,29 @@ export class World {
     const placement = this.plan.props.find((p) => p.id === propId)
     if (!placement) return null
     return this.sleepSpots[placement.kind] ?? null
+  }
+
+  /**
+   * Лучшее место для ночлега из того, что на этаже вообще стоит.
+   *
+   * Нужно предупреждению об отбое. Первокурсник, которому сказали «ещё
+   * полтора часа — и вы уснёте прямо здесь», обязан узнать заодно, где
+   * лечь: единственная скамейка стоит в восточном конце коридора,
+   * в стартовый кадр не попадает, и без подсказки о ней узнают только
+   * из утреннего «вы отключились там, где стояли».
+   *
+   * Лучшее, а не первое попавшееся: когда в игре появится общага,
+   * предупреждение должно звать в кровать, а не на скамейку, — и позовёт
+   * само, без правки этого кода.
+   */
+  private bestSleepPlace(): string | null {
+    let best: SleepSpot | null = null
+    for (const placement of this.plan.props) {
+      const spot = this.sleepSpots[placement.kind]
+      if (!spot) continue
+      if (!best || spot.energyQuality > best.energyQuality) best = spot
+    }
+    return best?.where ?? null
   }
 
   /**
@@ -1901,6 +1929,7 @@ export class World {
       canSpeakAtSeminar: seminar?.canSpeak ?? false,
       seminar,
       minutesUntilCurfew: minutesUntilCurfew(minutes),
+      sleepPlace: this.bestSleepPlace(),
       dayScreen: this.dayScreenInfo(),
     }
   }

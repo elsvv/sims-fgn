@@ -321,6 +321,50 @@ describe('World: лечь спать', () => {
   })
 })
 
+describe('World: где вообще можно лечь', () => {
+  it('снимок называет место для ночлега словами, а не видом предмета', () => {
+    // Игрок, которому сказали «ещё полтора часа — и вы уснёте прямо здесь»,
+    // обязан узнать заодно, где лечь: единственная скамейка стоит
+    // в дальнем конце коридора и в стартовый кадр не попадает.
+    expect(makeWorld().snapshot().sleepPlace).toBe('на скамейке в коридоре')
+  })
+
+  it('этаж без мест для сна ничего не обещает', () => {
+    const world = new World(PLAN, NEXT_TO_BENCH, CATALOG)
+    expect(world.snapshot().sleepPlace).toBeNull()
+  })
+
+  it('из двух мест выбирается то, где спится лучше', () => {
+    // Когда в игре появится общага, предупреждение обязано звать
+    // в кровать, а не на скамейку, — и позовёт само.
+    const plan: FloorPlan = {
+      ...PLAN,
+      props: [
+        ...PLAN.props,
+        { id: 'bed-1', kind: 'bed', col: 0, row: 2, rotation: 0, blocks: true },
+      ],
+    }
+    const world = new World(plan, NEXT_TO_BENCH, CATALOG, null, MOODLETS, [], undefined, {
+      sleepSpots: {
+        ...SLEEP_SPOTS,
+        bed: {
+          id: 'bed',
+          propKind: 'bed',
+          label: 'Своя кровать',
+          where: 'в своей кровати',
+          actionLabel: 'Лечь спать',
+          energyQuality: 1,
+          stressRelief: 0.8,
+          moodletId: null,
+          afterword: null,
+          forced: false,
+        },
+      },
+    })
+    expect(world.snapshot().sleepPlace).toBe('в своей кровати')
+  })
+})
+
 describe('World: принудительный сон', () => {
   it('после двух ночи персонаж вырубается где стоял', () => {
     const world = makeWorld()

@@ -1,3 +1,4 @@
+import { describeWait } from '../../sim/text/russian'
 import type { AttendanceMark } from '../../sim/study/Attendance'
 import {
   lessonAt,
@@ -71,9 +72,12 @@ export function SchedulePanel() {
 
       <div className="hud__where">Сейчас: {snapshot.currentRoom ?? 'в дверях'}</div>
 
+      {/* Сколько ждать — словами. Точное время начала стоит строкой выше,
+          в самом расписании: «через 112 мин» игрок всё равно переводит
+          в уме в «часа два», и переводить за него — работа игры. */}
       {snapshot.nextLesson && (
         <div className="hud__next">
-          Следующая пара через {Math.ceil(snapshot.nextLesson.startsInMinutes)} мин,{' '}
+          Следующая пара через {describeWait(snapshot.nextLesson.startsInMinutes)},{' '}
           {snapshot.nextLesson.room}
         </div>
       )}

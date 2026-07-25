@@ -122,6 +122,16 @@ test('первый взгляд: понятно, что делать, и пан�
 
   await page.screenshot({ path: 'screenshots/50-start-with-hint.png', fullPage: true })
 
+  // --- Ожидание названо словами ---
+  // «Следующая пара через 112 мин» — это показание прибора: игрок читает
+  // его, вычитает в уме и получает «часа два». Точное время начала стоит
+  // строкой выше, в самой строке пары.
+  // Числа в строке остаются только в номере аудитории — там они и в жизни
+  // числа. Само ожидание обязано быть словом.
+  const next = page.locator('.hud__next')
+  await expect(next).toHaveText(/^Следующая пара через [а-яё ]+, /)
+  await expect(page.locator('.lesson__time').first()).toHaveText(/^\d{2}:\d{2}/)
+
   // --- Панели делят экран ---
   // Подсказка стоит внизу по центру и обязана уживаться со всеми,
   // кто уже занял углы.
@@ -365,4 +375,78 @@ test('дорога за кофе: камера, автомат и выросша
     .toBeGreaterThan(before)
 
   await page.screenshot({ path: 'screenshots/53-coffee.png', fullPage: true })
+})
+
+test('конец дня: лечь на скамейку и прочитать, как день прошёл', async ({ page }) => {
+  await openFloor(page)
+
+  const box = await canvasBox(page)
+
+  // Скамейка стоит в восточном конце коридора и в стартовый кадр не
+  // попадает вовсе — до неё надо сначала отъехать камерой. Это и есть
+  // причина, по которой предупреждение об отбое теперь называет место
+  // для ночлега вслух: найти его самому неоткуда.
+  // Отъезжаем: скамейка стоит в восточном конце коридора, в стартовый
+  // кадр не попадает вовсе.
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+  for (let i = 0; i < 14; i++) {
+    await page.mouse.wheel(0, 120)
+    await page.waitForTimeout(40)
+  }
+  await page.waitForTimeout(700)
+
+  /*
+   * Панель навыков на время поиска убирается, и это не удобство проверки,
+   * а обход найденной беды. Камера смотрит в клетку появления и за
+   * персонажем не идёт, поэтому восточный конец коридора всегда уезжает
+   * в правый нижний угол кадра — ровно туда, где живут навыки. Скамейка
+   * при отъезде на четырнадцать щелчков ловится мышью в полосе шириной
+   * в несколько пикселей между краем панели и краем экрана. Подробности
+   * и способ воспроизведения — в docs/known-issues.md.
+   */
+  const hidden = await page.addStyleTag({
+    content: '.hud__skills, .hud__needs { display: none !important }',
+  })
+
+  const bench = await findProp(page, 'Скамейка в коридоре')
+  await hidden.evaluate((node) => node.parentNode?.removeChild(node))
+  expect(bench, 'скамейка — единственное место для сна — не нашлась в кадре').not.toBeNull()
+  if (!bench) return
+
+  await page.mouse.click(bench.x, bench.y)
+  const menu = page.locator('.hud__menu')
+  await expect(menu).toHaveCount(1)
+  // «Лечь спать» стоит в том же меню, что и «посидеть», но это не такое же
+  // действие: им кончается день.
+  const sleep = menu.getByText('Лечь спать прямо здесь', { exact: true })
+  await expect(sleep).toHaveCount(1)
+  await expect(menu.locator('.hud__menu-item--sleep .hud__menu-time')).toHaveText('до утра')
+  /*
+   * Сейчас начало восьмого утра, и «до утра» означает двадцать три часа.
+   * Механика такая и была, но узнать об этом из подписи «до утра» было
+   * нельзя: игрок ложился из любопытства и терял день целиком, все пары
+   * уходили в прогулы, а нужды к утру оказывались на нуле.
+   */
+  await expect(menu.locator('.hud__menu-note')).toContainText('пропустите всё сегодняшнее')
+  await expect(menu.locator('.hud__menu-note')).toContainText('часа')
+  await sleep.click()
+
+  // Персонаж идёт к скамейке и укладывается; день кончается сам.
+  await page.locator('.speed-buttons button').nth(3).click()
+  const dayScreen = page.locator('.dayscreen')
+  await expect(dayScreen).toHaveCount(1, { timeout: 120_000 })
+
+  await expect(dayScreen.locator('.dayscreen__kicker')).toHaveText('День прожит')
+  await expect(dayScreen.locator('.dayscreen__title')).toHaveText('Неделя 1, понедельник')
+  // Рассказ, а не таблица приращений: про пары, про сон и без единой
+  // строчки вида «энергия +40».
+  const story = await dayScreen.innerText()
+  expect(story).toContain('скамейке')
+  expect(story, 'итоги дня печатают приращения числами').not.toMatch(/[+−]\s*\d/)
+
+  await page.screenshot({ path: 'screenshots/54-day-summary.png', fullPage: true })
+
+  await dayScreen.getByText('Дальше', { exact: true }).click()
+  await expect(dayScreen).toHaveCount(0)
+  await expect(page.locator('.hud__day')).toHaveText('Неделя 1, вторник')
 })
