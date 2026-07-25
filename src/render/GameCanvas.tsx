@@ -2,6 +2,7 @@ import { OrbitControls } from '@react-three/drei'
 import { Canvas, useFrame } from '@react-three/fiber'
 import { FLOOR_A2, FLOOR_A2_SPAWN } from '../content/floors/floorA2'
 import { FloorMesh } from './building/FloorMesh'
+import { NpcCharacters } from './character/NpcCharacters'
 import { PlayerCharacter } from './character/PlayerCharacter'
 import { ClickToMove } from './input/ClickToMove'
 import { useWorld } from './useWorld'
@@ -29,6 +30,7 @@ function Scene({ onSelectProp }: { onSelectProp: (propId: string) => void }) {
       <FloorMesh plan={world.plan} catalog={world.catalog} onSelectProp={onSelectProp} />
       <ClickToMove />
       <PlayerCharacter />
+      <NpcCharacters />
     </>
   )
 }

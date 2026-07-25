@@ -1,6 +1,12 @@
+/*
+ * Слой интерфейса поверх сцены. z-index обязателен: подписи над NPC —
+ * тоже элементы страницы, и без явного порядка фамилия преподавателя,
+ * проходящего мимо, оказывалась поверх панели навыков.
+ */
 .hud {
   position: absolute;
   inset: 0;
+  z-index: 50;
   pointer-events: none;
   color: #e8e8ea;
   font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -16,9 +22,23 @@
   backdrop-filter: blur(6px);
 }
 
+/*
+ * Углы поделены и не пересекаются: нужды слева внизу, расписание слева
+ * вверху, часы справа вверху, навыки и настроение справа внизу.
+ * Панели навыков дан потолок высоты, чтобы длинный список модификаторов
+ * не дорос до часов на невысоком экране.
+ */
 .hud__needs { left: 16px; bottom: 16px; width: 230px; }
 .hud__time { right: 16px; top: 16px; text-align: right; }
 .hud__schedule { left: 16px; top: 16px; width: 250px; }
+
+.hud__skills {
+  right: 16px;
+  bottom: 16px;
+  width: 250px;
+  max-height: calc(100vh - 160px);
+  overflow-y: auto;
+}
 
 .hud__panel-title {
   font-size: 12px;
@@ -97,6 +117,66 @@
 
 .need__fill { height: 100%; border-radius: 3px; transition: width 120ms linear; }
 
+.skill { margin-bottom: 8px; }
+
+.skill__head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  margin-bottom: 3px;
+  opacity: 0.85;
+}
+
+.skill__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.skill__value {
+  padding-left: 8px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
+}
+
+.skill__track {
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+
+.skill__fill { height: 100%; border-radius: 3px; transition: width 160ms linear; }
+
+.hud__hint { margin-top: 8px; font-size: 11px; opacity: 0.55; }
+
+.hud__section {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.moodlet {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+  margin-bottom: 5px;
+}
+
+.moodlet:last-child { margin-bottom: 0; }
+.moodlet__label { flex: 1; min-width: 0; opacity: 0.85; }
+
+.moodlet__mood {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.moodlet__mood--good { color: #8fd6a1; }
+.moodlet__mood--bad { color: #e58a83; }
+.moodlet__empty { font-size: 12px; opacity: 0.5; }
+
 .hud__clock { font-size: 26px; font-weight: 600; letter-spacing: 0.5px; }
 .hud__day { font-size: 12px; opacity: 0.7; margin-bottom: 8px; }
 .hud__mood { margin-top: 10px; font-size: 12px; opacity: 0.8; }
@@ -164,3 +244,233 @@
   border-radius: 999px;
   padding: 7px 16px;
 }
+
+/*
+ * Подпись над NPC. Живёт не в .hud, а внутри канваса — drei выносит её
+ * в отдельный слой поверх сцены, — поэтому шрифт и цвета задаются здесь
+ * заново, а не наследуются от панелей.
+ *
+ * Плашка тёмная и полупрозрачная: на светлом полу и на белых стенах белый
+ * текст без подложки читается только в половине случаев. Тень под текстом
+ * добивает остальные: она отделяет буквы от стены, когда персонаж стоит
+ * вплотную к ней. Ширина плашки минимальна, углы скруглены под фамилию,
+ * а не под панель, — над головой не должно висеть окно.
+ */
+.npc-label {
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-size: 13px;
+  line-height: 1;
+  font-weight: 500;
+  white-space: nowrap;
+  color: #f1f1f4;
+  background: rgba(14, 17, 22, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 7px;
+  padding: 4px 9px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.75);
+  user-select: none;
+  pointer-events: none;
+}
+
+/*
+ * Люди и шкала традиций. Верх по центру — единственный свободный угол:
+ * слева расписание, справа часы, внизу нужды и навыки. Ширина небольшая,
+ * а список растёт только по мере знакомств, поэтому в начале игры панель
+ * занимает две строки и не спорит с соседями даже на узком экране.
+ */
+.hud__people {
+  left: 50%;
+  top: 16px;
+  transform: translateX(-50%);
+  width: 268px;
+  max-width: calc(100vw - 580px);
+  min-width: 232px;
+}
+
+.faction__track {
+  position: relative;
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #4d6ba8 0%, #3a3f4a 50%, #a8794d 100%);
+}
+
+/* Середина шкалы — «ещё не определился». Без метки не видно, куда снесло. */
+.faction__middle {
+  position: absolute;
+  left: 50%;
+  top: -2px;
+  width: 1px;
+  height: 10px;
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.faction__mark {
+  position: absolute;
+  top: -3px;
+  width: 12px;
+  height: 12px;
+  margin-left: -6px;
+  border-radius: 50%;
+  background: #e8e8ea;
+  border: 2px solid #12151b;
+  transition: left 200ms ease-out;
+}
+
+.faction__ends {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 5px;
+  font-size: 10px;
+  opacity: 0.45;
+}
+
+.faction__label {
+  margin-top: 6px;
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+/* Внутри панели людей разделитель тоньше: она сама невысокая. */
+.hud__people .hud__section { margin-top: 10px; padding-top: 9px; margin-bottom: 6px; }
+.hud__people .hud__hint { margin-top: 0; }
+
+.person {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+  margin-top: 6px;
+}
+
+.person:first-of-type { margin-top: 0; }
+.person__name { flex: 0 0 auto; opacity: 0.9; }
+
+.person__level {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  opacity: 0.55;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.person__scores {
+  flex: 0 0 auto;
+  font-size: 11px;
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/*
+ * Окно разговора. Шире меню действий: здесь не подписи в два слова,
+ * а живые фразы, и переносить их на четыре строки нельзя — реплику
+ * перестают читать. Кнопки ответов наследуют вид пунктов меню, чтобы
+ * разговор ощущался тем же действием, что и «взять кофе».
+ */
+.hud__dialogue {
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 520px;
+  max-width: calc(100vw - 48px);
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+}
+
+.dialogue__speaker {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  opacity: 0.6;
+  margin-bottom: 8px;
+}
+
+.dialogue__prompt {
+  font-size: 15px;
+  line-height: 1.45;
+  margin-bottom: 14px;
+}
+
+/* Ответы игрока — многострочные, поэтому выравнивание по левому краю. */
+.dialogue__option {
+  display: block;
+  line-height: 1.4;
+}
+
+.dialogue__reply {
+  font-size: 14px;
+  line-height: 1.45;
+  padding: 11px 13px;
+  margin-bottom: 12px;
+  border-radius: 8px;
+  border-left: 2px solid #5c85ea;
+  background: rgba(61, 108, 224, 0.14);
+}
+
+.dialogue__continue {
+  justify-content: center;
+  margin-bottom: 0;
+}
+
+/*
+ * Панель выступления на семинаре. Низ по центру, а не середина экрана:
+ * это не модальное окно, а то, что лежит перед студентом всю пару, —
+ * поднять руку можно и через двадцать минут после звонка. Ширина такая же,
+ * как у окна разговора: под кнопками живые фразы, а не подписи в два слова.
+ *
+ * Верхний предел высоты обязателен: пять способов выступить с пояснениями
+ * не должны наползать на часы на невысоком экране.
+ */
+.hud__seminar {
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  width: 520px;
+  max-width: calc(100vw - 540px);
+  min-width: 320px;
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+}
+
+.seminar__prompt {
+  font-size: 15px;
+  line-height: 1.4;
+  margin-bottom: 10px;
+}
+
+/* Способ выступить: подпись и под ней ставка, поэтому колонкой. */
+.seminar__option {
+  display: block;
+  line-height: 1.35;
+}
+
+.seminar__option-label { display: block; }
+
+.seminar__option-hint {
+  display: block;
+  margin-top: 3px;
+  font-size: 11px;
+  opacity: 0.55;
+}
+
+.seminar__verdict {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.seminar__grade {
+  font-size: 26px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.seminar__grade--good { color: #8fd6a1; }
+.seminar__grade--bad { color: #e58a83; }
+
+.seminar__verdict-text { font-size: 12px; opacity: 0.7; }
+.seminar__closed { font-size: 12px; opacity: 0.6; }

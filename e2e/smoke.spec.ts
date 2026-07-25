@@ -164,9 +164,58 @@ test('сцена этажа рисуется, интерфейс на месте
   await expect(schedule.locator('.lesson__room').first()).toHaveText('А-204')
   await expect(schedule.locator('.hud__where')).toHaveText('Сейчас: коридор')
 
+  // Этаж обитаем: шестеро преподавателей стоят в сцене и подписаны фамилиями.
+  const labels = page.locator('.npc-label')
+  await expect(labels).toHaveCount(6)
+  expect((await labels.allTextContents()).sort()).toEqual(
+    ['Алиева', 'Долгоруков', 'Кречетова', 'Марей', 'Михайловский', 'Павлов'].sort(),
+  )
+
   const speedButtons = page.locator('.speed-buttons button')
   await expect(speedButtons).toHaveCount(4)
   await expect(speedButtons.nth(1)).toHaveAttribute('data-active', 'true')
+
+  // Навыки и модификаторы настроения — правый нижний угол.
+  const skills = page.locator('.hud__skills')
+  await expect(skills.getByText('Навыки', { exact: true })).toBeVisible()
+  await expect(skills.locator('.skill')).toHaveCount(6)
+  await expect(skills.getByText('Древние языки', { exact: true })).toBeVisible()
+  await expect(skills.getByText('Выносливость', { exact: true })).toBeVisible()
+  await expect(skills.getByText('Настроение', { exact: true })).toBeVisible()
+  await expect(skills.locator('.moodlet__empty')).toBeVisible()
+
+  // Люди: шкала традиций на месте, знакомств пока нет.
+  const people = page.locator('.hud__people')
+  await expect(people.getByText('Шкала традиций', { exact: true })).toBeVisible()
+  await expect(people.locator('.faction__label')).toHaveText('Ещё не определился')
+  await expect(people.locator('.person')).toHaveCount(0)
+
+  // Панели делят углы и не наезжают друг на друга. Проверяется геометрией,
+  // а не на глаз: стоит панели подрасти, и тест это поймает.
+  const panelSelectors = [
+    '.hud__needs',
+    '.hud__schedule',
+    '.hud__time',
+    '.hud__skills',
+    '.hud__people',
+  ]
+  const panelBoxes = await Promise.all(
+    panelSelectors.map((selector) => page.locator(selector).boundingBox()),
+  )
+
+  for (let i = 0; i < panelBoxes.length; i++) {
+    for (let j = i + 1; j < panelBoxes.length; j++) {
+      const a = panelBoxes[i]
+      const b = panelBoxes[j]
+      expect(a, `панель ${panelSelectors[i]} не нашлась`).not.toBeNull()
+      expect(b, `панель ${panelSelectors[j]} не нашлась`).not.toBeNull()
+      if (!a || !b) continue
+
+      const overlaps =
+        a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height
+      expect(overlaps, `${panelSelectors[i]} перекрывает ${panelSelectors[j]}`).toBe(false)
+    }
+  }
 
   // Часы должны идти, иначе игровой цикл не крутится.
   const firstTime = await clock.textContent()
@@ -205,6 +254,58 @@ test('сцена этажа рисуется, интерфейс на месте
     consoleErrors.filter((text) => !text.includes('Download the React DevTools')),
     'браузер ругался в консоль',
   ).toEqual([])
+
+  // --- Разговор с преподавателем ---
+  // По человеку надо попасть мышью в трёхмерной сцене. Опорой служит подпись
+  // над головой: это обычный элемент страницы, его координаты известны точно,
+  // а фигура висит прямо под ним. Высота фигуры в пикселях зависит от
+  // удаления камеры, поэтому пробуем несколько смещений вниз.
+  const teacherLabel = page.locator('.npc-label', { hasText: 'Михайловский' })
+  await expect(teacherLabel).toBeVisible()
+  const labelBox = await teacherLabel.boundingBox()
+  expect(labelBox, 'подпись над Михайловским не нашлась').not.toBeNull()
+
+  const dialogue = page.locator('.hud__dialogue')
+  if (labelBox) {
+    for (const dy of [22, 30, 38, 46, 16]) {
+      if ((await dialogue.count()) > 0) break
+      await page.mouse.click(labelBox.x + labelBox.width / 2, labelBox.y + labelBox.height + dy)
+      await page.waitForTimeout(400)
+    }
+  }
+
+  await expect(dialogue, 'клик по преподавателю не начал разговор').toHaveCount(1)
+  await expect(dialogue.locator('.dialogue__speaker')).toHaveText(
+    'Михайловский Александр Владиславович',
+  )
+  await expect(dialogue.locator('.dialogue__prompt')).not.toBeEmpty()
+
+  // В меню всегда есть чем ответить, и уйти можно, ничего не сказав.
+  const answers = dialogue.locator('.dialogue__option')
+  expect(await answers.count()).toBeGreaterThanOrEqual(2)
+  await expect(dialogue.getByText('Промолчать и отойти')).toBeVisible()
+
+  await page.screenshot({ path: 'screenshots/03-dialogue.png', fullPage: true })
+
+  // Дерзкий ответ: собеседник отвечает, а отношения меняются на глазах.
+  await dialogue.getByText('Сказать, что герменевтика').click()
+  await expect(dialogue.locator('.dialogue__reply')).toContainText('Смело')
+  await expect(answers).toHaveCount(0)
+
+  await page.screenshot({ path: 'screenshots/04-dialogue-reply.png', fullPage: true })
+
+  await dialogue.getByText('Продолжить', { exact: true }).click()
+  await expect(dialogue).toHaveCount(0)
+
+  const met = people.locator('.person', { hasText: 'Михайловский' })
+  await expect(met).toHaveCount(1)
+  await expect(met.locator('.person__scores')).toHaveText('+6 / −8')
+
+  // Дерзость перед самым континентальным человеком факультета сносит
+  // игрока в аналитическую сторону — метка уходит левее середины.
+  await expect(people.locator('.faction__label')).toHaveText('Ещё не определился')
+  const markLeft = await people.locator('.faction__mark').evaluate((node) => node.style.left)
+  expect(Number.parseFloat(markLeft)).toBeLessThan(50)
 
   // --- Клик по полу ---
   // Бьём в свободный пол блока туалетов — он в левой нижней части кадра.

@@ -1,5 +1,11 @@
 import type { AttendanceMark } from '../../sim/study/Attendance'
-import { lessonAt, lessonsOnDay, periodOf, type Lesson } from '../../sim/study/Schedule'
+import {
+  lessonAt,
+  lessonsOnDay,
+  occurrenceId,
+  periodOf,
+  type Lesson,
+} from '../../sim/study/Schedule'
 import { useWorld, useWorldSnapshot } from '../useWorld'
 
 const MARK_LABELS: Record<AttendanceMark, string> = {
@@ -36,7 +42,9 @@ export function SchedulePanel() {
       ) : (
         lessons.map((lesson) => {
           const course = study.config.courses[lesson.courseId]
-          const mark = study.attendance.markFor(lesson.id)
+          // Отметка ищется за сегодняшнюю пару: в расписании стоит слот,
+          // а в журнале — конкретный день.
+          const mark = study.attendance.markFor(occurrenceId(snapshot.day, lesson.id))
           return (
             <div
               className="lesson"

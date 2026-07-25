@@ -7,7 +7,11 @@ import {
   useState,
   type ReactNode,
 } from 'react'
+import { DIALOGUE_NODES } from '../content/dialogue/nodes'
 import { FLOOR_A2, FLOOR_A2_SPAWN } from '../content/floors/floorA2'
+import { MOODLETS } from '../content/moodlets'
+import { TEACHER_NPCS } from '../content/people/npcs'
+import { TEACHERS } from '../content/people/teachers'
 import { PROP_CATALOG } from '../content/props/propCatalog'
 import { STUDY_CONFIG } from '../content/study/courses'
 import { StudyState } from '../sim/study/StudyState'
@@ -29,6 +33,9 @@ export function WorldProvider({ children }: { children: ReactNode }) {
     FLOOR_A2_SPAWN,
     PROP_CATALOG,
     new StudyState(STUDY_CONFIG),
+    MOODLETS,
+    TEACHER_NPCS,
+    { teachers: TEACHERS, dialogues: DIALOGUE_NODES },
   )
   return createElement(WorldContext.Provider, { value: worldRef.current }, children)
 }
