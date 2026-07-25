@@ -4,6 +4,7 @@ import {
   describeChoice,
   describeConversation,
   emptyTotals,
+  toneHint,
   type ConsequenceReport,
   type DialogueTone,
   type EffectTotals,
@@ -71,6 +72,26 @@ export function availableChainOptions(
   return node.options.filter((option) =>
     option.requires ? isAvailable(option.requires, context) : true,
   )
+}
+
+/**
+ * Что игрок видит до выбора: сама реплика и намёк на её тон.
+ * Ни эффектов, ни чисел — иначе выбор превращается в арифметику.
+ */
+export interface OptionPreview {
+  id: string
+  text: string
+  tone: DialogueTone
+  hint: string
+}
+
+export function previewOptions(node: ChainNode, context: DialogueContext): OptionPreview[] {
+  return availableChainOptions(node, context).map((option) => ({
+    id: option.id,
+    text: option.text,
+    tone: option.tone,
+    hint: toneHint(option.tone),
+  }))
 }
 
 export type ChainProblemKind =
@@ -375,6 +396,11 @@ export class Conversation {
   /** Реплики, доступные игроку прямо сейчас. */
   currentOptions(): ChainOption[] {
     return availableChainOptions(this.currentNode(), this.context)
+  }
+
+  /** То же самое, но глазами игрока: текст и намёк на тон, без чисел. */
+  currentPreview(): OptionPreview[] {
+    return previewOptions(this.currentNode(), this.context)
   }
 
   /** Выбирает ответ и отдаёт реакцию собеседника. */

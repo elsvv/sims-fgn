@@ -266,6 +266,30 @@ describe('доступные реплики узла', () => {
   })
 })
 
+describe('что игрок видит до выбора', () => {
+  it('текст реплики и намёк на тон — и ничего больше', () => {
+    const talk = new Conversation(makeChain(), CONTEXT)
+    talk.start()
+    const preview = talk.currentPreview()
+    expect(preview.map((item) => item.id)).toEqual(['plain', 'learned'])
+    expect(preview[0]).toEqual({
+      id: 'plain',
+      text: 'Сказать прямо',
+      tone: 'direct',
+      hint: 'Прямо, без обиняков и без извинений.',
+    })
+  })
+
+  it('в подсказках нет ни чисел, ни названий измерений', () => {
+    const talk = new Conversation(makeChain(), CONTEXT)
+    talk.start()
+    for (const item of talk.currentPreview()) {
+      expect(item.hint, item.id).not.toMatch(/\d/)
+      expect(item.hint, item.id).not.toMatch(/respect|уважени|симпати/i)
+    }
+  })
+})
+
 describe('ход разговора', () => {
   it('начинается со стартового узла и завязки', () => {
     const talk = new Conversation(makeChain(), CONTEXT)
