@@ -980,3 +980,112 @@
 
 .savemenu__button--danger:hover { background: rgba(200, 74, 66, 0.55); }
 .savemenu__button--quiet { opacity: 0.65; }
+
+/*
+ * Панель звука.
+ *
+ * Левый край посередине — единственное место, за которое она ни с кем
+ * не спорит: сверху расписание, снизу нужды, справа внизу навыки,
+ * а окна разговоров и панель семинара оставляют по 270 пикселей
+ * с каждого края (см. max-width у .hud__conversation). Свёрнутая
+ * панель — одна кнопка, развёрнутая раскрывается вниз от неё.
+ *
+ * Столбец не перехватывает мышь целиком: между кнопкой и панелью
+ * остаётся пустое место, и клики сквозь него должны доходить до сцены.
+ */
+.hud__audio {
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.audio__toggle {
+  pointer-events: auto;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(18, 21, 27, 0.86);
+  backdrop-filter: blur(6px);
+  color: #e8e8ea;
+  font-family: inherit;
+  font-size: 12px;
+  letter-spacing: 0.3px;
+  cursor: pointer;
+}
+
+.audio__toggle:hover { background: rgba(61, 108, 224, 0.5); }
+
+/* Выключенный звук виден по кнопке, не открывая панель. */
+.audio__toggle[data-off='true'] { opacity: 0.55; }
+
+.audio__panel {
+  position: static;
+  width: 232px;
+}
+
+/*
+ * Общий выключатель. Не ползунок и не галочка: это единственное решение
+ * про звук, которое принимают не глядя, — и принимать его надо одним
+ * нажатием в одно и то же место.
+ */
+.audio__switch {
+  display: block;
+  width: 100%;
+  margin-bottom: 12px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: #e8e8ea;
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.audio__switch:hover { background: rgba(61, 108, 224, 0.35); }
+
+.audio__switch[data-on='true'] {
+  border-color: rgba(92, 133, 234, 0.5);
+  background: rgba(61, 108, 224, 0.25);
+}
+
+.audio__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+
+.audio__row:last-child { margin-bottom: 0; }
+
+/* Подпись и величина не тянутся: тянется только сам ползунок. */
+.audio__name { flex: 0 0 68px; opacity: 0.8; }
+
+.audio__value {
+  flex: 0 0 34px;
+  text-align: right;
+  opacity: 0.5;
+  font-variant-numeric: tabular-nums;
+}
+
+.audio__slider {
+  flex: 1;
+  min-width: 0;
+  height: 4px;
+  margin: 0;
+  accent-color: #5c85ea;
+  cursor: pointer;
+}
+
+/* Выключенный звук оставляет ползунки на месте, но гасит их. */
+.audio__slider:disabled { opacity: 0.3; cursor: default; }
+
+/* Подсказка про разрешение браузера отбита от последнего ползунка. */
+.audio__panel .hud__hint { margin-top: 12px; line-height: 1.4; }

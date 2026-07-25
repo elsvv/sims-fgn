@@ -1,6 +1,8 @@
 import { useState } from 'react'
+import { AudioProvider } from './audio/useGameAudio'
 import { GameCanvas } from './GameCanvas'
 import { usePointerGestures } from './input/sceneClicks'
+import { AudioPanel } from './ui/AudioPanel'
 import { ConversationPanel } from './ui/ConversationPanel'
 import { DayScreen } from './ui/DayScreen'
 import { DialoguePanel } from './ui/DialoguePanel'
@@ -42,6 +44,7 @@ function Hud({
       <PeoplePanel />
       <NeedsPanel />
       <SkillsPanel />
+      <AudioPanel />
       <ActivityLabel />
       <SeminarPanel />
       <InteractionMenu propId={selectedProp} onClose={onCloseMenu} />
@@ -72,7 +75,15 @@ export function App() {
   return (
     <WorldProvider>
       <GameCanvas onSelectProp={setSelectedProp} />
-      <Hud selectedProp={selectedProp} onCloseMenu={() => setSelectedProp(null)} />
+      {/*
+        Звук обёрнут вокруг интерфейса, а не вокруг сцены, и это не мелочь:
+        передвинутый ползунок громкости перерисовывает всё, что внутри
+        провайдера, — а внутри сцены это означало бы пересборку дерева
+        three.js на каждое движение мыши по ползунку.
+      */}
+      <AudioProvider>
+        <Hud selectedProp={selectedProp} onCloseMenu={() => setSelectedProp(null)} />
+      </AudioProvider>
     </WorldProvider>
   )
 }

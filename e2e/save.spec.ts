@@ -25,6 +25,28 @@ async function waitForClockChange(page: Page, from: string): Promise<void> {
     .not.toBe(from)
 }
 
+/**
+ * Показания часов после того, как они остановились.
+ *
+ * Панель перечитывает мир десять раз в секунду, поэтому в первый миг
+ * после остановки времени на экране ещё висит значение, снятое до неё, —
+ * и оно на игровую минуту младше того, на котором мир замер. Прочитать
+ * его и потребовать, чтобы часы остались на нём, значит потребовать
+ * от них шага назад. Отсюда ожидание двух одинаковых показаний подряд:
+ * это и есть «часы встали».
+ */
+async function stoppedClock(page: Page): Promise<string> {
+  const clock = page.locator('.hud__clock')
+  let previous = ''
+  for (let attempt = 0; attempt < 30; attempt++) {
+    await page.waitForTimeout(150)
+    const current = (await clock.textContent()) ?? ''
+    if (current !== '' && current === previous) return current
+    previous = current
+  }
+  throw new Error('часы не остановились, хотя меню открыто')
+}
+
 test('игра сохраняется в слот, загружается обратно и начинается заново', async ({ page }) => {
   await page.goto('/')
   await expect(page.locator('canvas')).toBeVisible()
@@ -46,9 +68,9 @@ test('игра сохраняется в слот, загружается обр
   await expect(slots.nth(1).getByText('Загрузить')).toBeDisabled()
 
   // Пока меню открыто, время стоит: список слотов читают не торопясь.
-  const paused = await clock.textContent()
+  const paused = await stoppedClock(page)
   await page.waitForTimeout(2000)
-  await expect(clock).toHaveText(paused ?? '')
+  await expect(clock).toHaveText(paused)
 
   // --- Сохранение ---
   await slots.nth(1).getByText('Сохранить').click()
