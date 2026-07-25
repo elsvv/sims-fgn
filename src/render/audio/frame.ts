@@ -7,7 +7,15 @@ import type {
   WorldSnapshot,
 } from '../../sim/World'
 import type { AmbienceSituation } from './ambience'
-import type { AudioFrame, AudioInteraction, AudioLine, LineTone } from './events'
+import { distanceBetween } from './distance'
+import type {
+  AudioFrame,
+  AudioInteraction,
+  AudioLine,
+  AudioNeighbour,
+  AudioSpeech,
+  LineTone,
+} from './events'
 import { isNight, type MusicSituation } from './music'
 
 /**
@@ -122,6 +130,58 @@ export function interactionOf(
   }
 }
 
+/**
+ * Отношения теплеют — это слышно.
+ *
+ * Порог взят не с потолка: это та же граница, на которой отношения
+ * в панели перестают называться знакомством. Преподаватель, который
+ * вас выделяет, и здоровается иначе.
+ */
+export const WARM_AFFECTION = 25
+
+/** Где стоит этот преподаватель прямо сейчас. */
+function teacherAt(snapshot: WorldSnapshot, teacherId: string): Vec2 | null {
+  return snapshot.npcs.find((npc) => npc.teacherId === teacherId)?.position ?? null
+}
+
+/** Расположен ли к игроку. */
+function isWarm(snapshot: WorldSnapshot, teacherId: string): boolean {
+  const relation = snapshot.relationships.find((item) => item.teacherId === teacherId)
+  return relation !== undefined && relation.affection >= WARM_AFFECTION
+}
+
+/**
+ * Ближайший преподаватель.
+ *
+ * Однокурсники сюда не попадают нарочно: голоса записаны шестерым, и
+ * безымянный студент, заговоривший голосом Марея, был бы хуже тишины.
+ */
+export function neighbourOf(snapshot: WorldSnapshot): AudioNeighbour | null {
+  let nearest: AudioNeighbour | null = null
+  for (const npc of snapshot.npcs) {
+    const teacherId = npc.teacherId
+    if (teacherId === null) continue
+    const distance = distanceBetween(snapshot.playerPosition, npc.position)
+    if (nearest !== null && distance >= nearest.distance) continue
+    nearest = { id: teacherId, at: npc.position, distance, warm: isWarm(snapshot, teacherId) }
+  }
+  return nearest
+}
+
+/** Выступление на семинаре и ответ преподавателя на него. */
+export function speechOf(snapshot: WorldSnapshot): AudioSpeech | null {
+  const speech = snapshot.seminar?.speech ?? null
+  if (speech === null) return null
+  const teacherId = speech.teacherId
+  return {
+    key: `${speech.occurrenceId}|${speech.optionId}`,
+    success: speech.success,
+    teacherId,
+    reply: speech.reply,
+    at: teacherId === null ? null : teacherAt(snapshot, teacherId),
+  }
+}
+
 /** Состояние мира глазами звука. */
 export function audioFrameOf(
   snapshot: WorldSnapshot,
@@ -129,17 +189,14 @@ export function audioFrameOf(
   positions: PropPositions,
 ): AudioFrame {
   const lesson = snapshot.currentLesson
-  const speech = snapshot.seminar?.speech ?? null
   return {
     playerAt: snapshot.playerPosition,
     moving: snapshot.isPlayerMoving,
     lessonKey: lesson === null ? null : `${lesson.courseId}|${lesson.room}`,
     interaction: interactionOf(interaction, snapshot.isPlayerMoving, positions),
-    speech:
-      speech === null
-        ? null
-        : { key: `${speech.occurrenceId}|${speech.optionId}`, success: speech.success },
+    speech: speechOf(snapshot),
     line: lineOf(snapshot),
+    neighbour: neighbourOf(snapshot),
   }
 }
 

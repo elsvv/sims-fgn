@@ -1,13 +1,5 @@
 import type { Vec2 } from '../../sim/types'
-import {
-  AMBIENCE_LAYERS,
-  MUSIC_TRACKS,
-  SOUNDS,
-  allVoiceSrc,
-  isSynth,
-  voiceSrc,
-  type AmbienceId,
-} from './catalog'
+import { AMBIENCE_LAYERS, MUSIC_TRACKS, SOUNDS, isSynth, type AmbienceId } from './catalog'
 import {
   AMBIENCE_FADE_IN,
   AMBIENCE_FADE_OUT,
@@ -18,6 +10,9 @@ import {
 } from './crossfade'
 import { positionalGain } from './distance'
 import type { SoundCue, VoiceCue } from './events'
+import { planPhrase, type PhrasePlan } from './phrase'
+import { renderPhrase } from './simlish'
+import { voiceFor } from './voices'
 import {
   AUDIO_BUSES,
   DEFAULT_AUDIO_SETTINGS,
@@ -73,6 +68,9 @@ interface SpeakingVoice {
   readonly gain: GainNode
 }
 
+/** Сколько отрендеренных вокализов держать в памяти. */
+const VOICE_CACHE_LIMIT = 96
+
 /** Safari до 14.1 знал только префиксный конструктор. */
 interface AudioContextCarrier {
   readonly AudioContext?: typeof AudioContext
@@ -123,8 +121,34 @@ export class AudioMixer {
   private ambience: AmbienceVoice | null = null
   private speaking: SpeakingVoice | null = null
 
+  /**
+   * Номер текущей попытки заговорить. Растёт с каждым вокализом и
+   * отсекает те, что отрендерились с опозданием: говорить должен
+   * последний, кого попросили, а не последний, кто успел.
+   */
+  private speechTurn = 0
+
+  /**
+   * До какого времени контекста голос занят.
+   *
+   * Одного `speaking` мало: вокализ с задержкой (ответ преподавателя
+   * после оценки) уже назначен, но узел ещё не заиграл, — а место
+   * занято, и приветствие туда лезть не должно.
+   */
+  private speakingUntil = 0
+
   /** Распакованный звук по пути к файлу. */
   private readonly buffers = new Map<string, Promise<AudioBuffer | null>>()
+
+  /**
+   * Отрендеренные вокализы по ключу «кто, как, сколько, зерно».
+   *
+   * Синтез двухсекундной фразы занимает единицы миллисекунд, но одна
+   * и та же реплика в игре показывается не раз и не два — сцену
+   * переигрывают, разговор перечитывают. Второй раз она достаётся
+   * из памяти мгновенно.
+   */
+  private readonly voices = new Map<string, Promise<AudioBuffer | null>>()
 
   constructor(settings: AudioSettings = DEFAULT_AUDIO_SETTINGS) {
     this.settings = settings
@@ -241,37 +265,72 @@ export class AudioMixer {
     if (definition.src !== null) this.playBuffer(definition.src, buses.sfx, gain, when)
   }
 
-  /** Вокализ под реплику. Предыдущий обрывается: говорят по очереди. */
-  speak(voice: VoiceCue): void {
+  /**
+   * Вокализ под реплику.
+   *
+   * Предыдущий обрывается: говорят по очереди, и при быстрой промотке
+   * реплик голос не должен наложиться сам на себя. Сторожит это не
+   * только stopSpeaking, но и счётчик `speechTurn`: синтез идёт не
+   * мгновенно, и две реплики подряд могут отрендериться в обратном
+   * порядке — тогда опоздавшая обязана промолчать, а не заговорить
+   * поверх той, что уже звучит.
+   *
+   * @param listener где стоит игрок: далёкий преподаватель не слышен.
+   */
+  speak(voice: VoiceCue, listener: Vec2): void {
     const ctx = this.ctx
     const buses = this.buses
     if (ctx === null || buses === null) return
     if (busVolume(this.settings, 'voice') <= 0) return
 
-    void this.loadBuffer(voiceSrc(voice.bank, voice.emotion)).then((buffer) => {
-      if (buffer === null || this.closed || this.ctx !== ctx) return
-      this.stopSpeaking()
-      try {
-        const source = ctx.createBufferSource()
-        source.buffer = buffer
-        source.playbackRate.value = voice.rate
-        const gain = ctx.createGain()
-        gain.gain.value = voice.gain
-        source.connect(gain)
-        gain.connect(buses.voice)
-        const current: SpeakingVoice = { source, gain }
-        source.onended = (): void => {
-          if (this.speaking === current) this.speaking = null
-          gain.disconnect()
+    // Далёкий преподаватель не слышен: коридор длинный, а голос — не
+    // звонок, он не обязан доставать до другого конца этажа.
+    const distance = positionalGain(listener, voice.at)
+    if (distance <= 0.02) return
+
+    // Приветствие не лезет поверх того, кто уже говорит: на быстрой
+    // промотке шестеро здоровались бы наперебой.
+    if (!voice.interrupts && this.isSpeaking()) return
+
+    const preset = voiceFor(voice.voiceId)
+    if (preset === null) return
+
+    const turn = ++this.speechTurn
+    const plan = planPhrase(preset, voice.emotion, voice.syllables, voice.seed)
+    void this.renderVoice(plan, ctx.sampleRate).then(
+      (buffer) => {
+        // Пока рендерили, могли начать говорить что-то ещё, выключить
+        // звук или закрыть игру.
+        if (buffer === null || this.closed || this.ctx !== ctx) return
+        if (turn !== this.speechTurn) return
+        if (busVolume(this.settings, 'voice') <= 0) return
+        // Проверка повторяется: пока синтезировали, заговорить мог
+        // кто-то ещё, и уступить надо ему.
+        if (!voice.interrupts && this.isSpeaking()) return
+        this.stopSpeaking()
+        try {
+          const source = ctx.createBufferSource()
+          source.buffer = buffer
+          const gain = ctx.createGain()
+          gain.gain.value = distance
+          source.connect(gain)
+          gain.connect(buses.voice)
+          const current: SpeakingVoice = { source, gain }
+          source.onended = (): void => {
+            if (this.speaking === current) this.speaking = null
+            gain.disconnect()
+          }
+          this.speaking = current
+          const startAt = ctx.currentTime + Math.max(0, voice.delay)
+          this.speakingUntil = startAt + buffer.duration
+          source.start(startAt)
+        } catch {
+          // Контекст закрылся между рендером и запуском: реплика
+          // прочитается молча, и это лучше исключения в консоли.
+          this.speaking = null
         }
-        this.speaking = current
-        source.start()
-      } catch {
-        // Контекст закрылся между загрузкой и запуском: реплика
-        // прочитается молча, и это лучше исключения в консоли.
-        this.speaking = null
-      }
-    })
+      },
+    )
   }
 
   /** Всё остановить и отпустить. */
@@ -285,6 +344,10 @@ export class AudioMixer {
     this.master = null
     this.buses = null
     this.buffers.clear()
+    // Отрендеренные вокализы привязаны к частоте дискретизации того
+    // контекста, в котором сделаны: следующий может открыться с другой,
+    // и старые записи в нём зазвучали бы не тем голосом.
+    this.voices.clear()
     if (ctx !== null) void ctx.close().catch(() => undefined)
   }
 
@@ -506,9 +569,17 @@ export class AudioMixer {
     })
   }
 
+  /** Говорит ли кто-нибудь прямо сейчас или вот-вот заговорит. */
+  private isSpeaking(): boolean {
+    if (this.speaking !== null) return true
+    const ctx = this.ctx
+    return ctx !== null && ctx.currentTime < this.speakingUntil
+  }
+
   private stopSpeaking(): void {
     const current = this.speaking
     const ctx = this.ctx
+    this.speakingUntil = 0
     if (current === null || ctx === null) return
     this.speaking = null
     const now = ctx.currentTime
@@ -540,12 +611,27 @@ export class AudioMixer {
     voice.gain.disconnect()
   }
 
-  /** Всё короткое — заранее. Полмегабайта на всё вместе. */
+  /**
+   * Отрендерить фразу или взять готовую из памяти.
+   *
+   * Кэш ограничен: реплик в игре сотни, и держать их все распакованными
+   * незачем — заговорят заново, отрендерится заново.
+   */
+  private renderVoice(plan: PhrasePlan, sampleRate: number): Promise<AudioBuffer | null> {
+    const key = `${plan.voiceId}|${plan.emotion}|${plan.syllables.length}|${plan.seed}`
+    const cached = this.voices.get(key)
+    if (cached !== undefined) return cached
+    if (this.voices.size >= VOICE_CACHE_LIMIT) this.voices.clear()
+    const pending = renderPhrase(plan, sampleRate).catch(() => null)
+    this.voices.set(key, pending)
+    return pending
+  }
+
+  /** Всё короткое — заранее. Голосов здесь нет: они синтезируются. */
   private warmUp(): void {
     for (const definition of Object.values(SOUNDS)) {
       if (definition.src !== null) void this.loadBuffer(definition.src)
     }
-    for (const src of allVoiceSrc()) void this.loadBuffer(src)
   }
 
   private loadBuffer(src: string): Promise<AudioBuffer | null> {

@@ -1,4 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
+import type * as PhraseModule from '../src/render/audio/phrase'
+import type * as SimlishModule from '../src/render/audio/simlish'
+import type * as VoicesModule from '../src/render/audio/voices'
 
 /**
  * Звук — в настоящем браузере.
@@ -41,15 +44,15 @@ const SFX = [
   'paper',
   'pen',
 ]
-const VOICE = ['marey', 'alieva'].flatMap((bank) =>
-  ['statement', 'question', 'cheerful', 'displeased'].map((mood) => `${bank}-${mood}`),
-)
-
+/*
+ * Голосов в этом списке нет нарочно: симлиш синтезируется на месте
+ * и файлами не лежит. Что он при этом звучит, проверяет отдельный
+ * тест ниже — рендером в настоящем браузере.
+ */
 const ALL_FILES = [
   ...MUSIC.map((id) => `/audio/music/${id}.mp3`),
   ...AMBIENCE.map((id) => `/audio/ambience/${id}.mp3`),
   ...SFX.map((id) => `/audio/sfx/${id}.mp3`),
-  ...VOICE.map((id) => `/audio/voice/${id}.mp3`),
 ]
 
 /** Ошибки консоли и необработанные исключения за время жизни страницы. */
@@ -123,7 +126,6 @@ test('после клика звук получает разрешение и и
   expect(asked.some((path) => path.startsWith('/audio/music/'))).toBe(true)
   expect(asked.some((path) => path.startsWith('/audio/ambience/'))).toBe(true)
   expect(asked.some((path) => path.startsWith('/audio/sfx/'))).toBe(true)
-  expect(asked.some((path) => path.startsWith('/audio/voice/'))).toBe(true)
 
   await page.locator('.audio__toggle').click()
   await expect(page.locator('.audio__panel')).toBeVisible()
@@ -230,4 +232,113 @@ test('настройки звука переживают перезагрузк�
   await expect(page.locator('.audio__toggle')).toHaveAttribute('data-off', 'true')
   await page.locator('.audio__toggle').click()
   await expect(page.locator('.audio__switch')).toHaveText('Выключен')
+})
+
+/**
+ * Голоса — самая уязвимая часть звука, и уязвима она иначе, чем файлы.
+ *
+ * Симлиш не лежит записями: он синтезируется на Web Audio, и весь
+ * синтез обёрнут в try/catch — сцена не имеет права упасть из-за звука.
+ * Отсюда ровно та же беда, что в соседнем проекте, только с другого
+ * конца: неверный вызов Web Audio не уронит игру и не напишет в консоль,
+ * он просто вернёт тишину. Ни один модульный тест этого не поймает —
+ * Web Audio в них нет.
+ *
+ * Поэтому здесь настоящий рендер в настоящем браузере, и проверяется
+ * то, ради чего всё писалось: звук не пустой, шестеро звучат по-разному,
+ * а вопрос отличается от утверждения.
+ */
+test('шесть голосов синтезируются и звучат по-разному', async ({ page }) => {
+  const problems = watchConsole(page)
+  await openGame(page)
+
+  const measured = await page.evaluate(async () => {
+    // Путь собирается из куска: иначе его пытается разрешить tsc,
+    // которому в браузерный адрес ходить незачем. Типы при этом
+    // настоящие — они приехали обычным import type наверху файла.
+    const load = (name: string): Promise<unknown> => import(`/src/render/audio/${name}.ts`)
+    const voices = (await load('voices')) as typeof VoicesModule
+    const phrase = (await load('phrase')) as typeof PhraseModule
+    const simlish = (await load('simlish')) as typeof SimlishModule
+
+    const out: { id: string; emotion: string; peak: number; rms: number; seconds: number }[] = []
+    for (const id of voices.VOICE_IDS) {
+      for (const emotion of voices.VOICE_EMOTIONS) {
+        const plan = phrase.planForLine(voices.VOICES[id], emotion, 'Итак, начнём разговор.', id)
+        const buffer = await simlish.renderPhrase(plan, 44100)
+        if (buffer === null) {
+          out.push({ id, emotion, peak: 0, rms: 0, seconds: 0 })
+          continue
+        }
+        const data = buffer.getChannelData(0)
+        let peak = 0
+        let sum = 0
+        for (let i = 0; i < data.length; i++) {
+          const value = Math.abs(data[i] ?? 0)
+          if (value > peak) peak = value
+          sum += (data[i] ?? 0) ** 2
+        }
+        out.push({
+          id,
+          emotion,
+          peak,
+          rms: Math.sqrt(sum / data.length),
+          seconds: buffer.duration,
+        })
+      }
+    }
+    return out
+  })
+
+  expect(measured).toHaveLength(24)
+  for (const row of measured) {
+    const where = `${row.id}/${row.emotion}`
+    // Тишина — это и есть та поломка, ради которой тест написан.
+    expect(row.peak, where).toBeGreaterThan(0.2)
+    expect(row.rms, where).toBeGreaterThan(0.02)
+    // И не оглушительно: ограничитель стоит на 0.9.
+    expect(row.peak, where).toBeLessThanOrEqual(0.9)
+    expect(row.seconds, where).toBeGreaterThan(0.3)
+    expect(row.seconds, where).toBeLessThan(4)
+  }
+
+  // Недовольство тише радости у каждого: половина эмоции — это громкость,
+  // и ограничитель не имеет права её срезать.
+  for (const id of new Set(measured.map((row) => row.id))) {
+    const glad = measured.find((row) => row.id === id && row.emotion === 'cheerful')
+    const sour = measured.find((row) => row.id === id && row.emotion === 'displeased')
+    expect(sour!.peak, `${id}: недовольство громче радости`).toBeLessThan(glad!.peak)
+  }
+
+  expect(problems).toEqual([])
+})
+
+test('длинная реплика бормочется дольше короткой, но не впятеро', async ({ page }) => {
+  await openGame(page)
+
+  const measured = await page.evaluate(async () => {
+    const load = (name: string): Promise<unknown> => import(`/src/render/audio/${name}.ts`)
+    const voices = (await load('voices')) as typeof VoicesModule
+    const phrase = (await load('phrase')) as typeof PhraseModule
+    const simlish = (await load('simlish')) as typeof SimlishModule
+
+    const render = async (text: string) => {
+      const plan = phrase.planForLine(voices.VOICES.marey, 'statement', text)
+      const buffer = await simlish.renderPhrase(plan, 44100)
+      return { seconds: plan.seconds, rendered: buffer?.duration ?? 0 }
+    }
+    return {
+      short: await render('Садитесь.'),
+      long: await render(
+        'Итак. Сегодня три вещи. Первое — жанр, второе — метод, третье — вы и ваш текст.',
+      ),
+    }
+  })
+
+  expect(measured.short.seconds).toBeGreaterThan(0)
+  expect(measured.long.seconds).toBeGreaterThan(measured.short.seconds)
+  // Отношение длин ограничено сверху: иначе короткая фраза тянулась бы
+  // ровно столько же, сколько абзац, или наоборот.
+  expect(measured.long.seconds / measured.short.seconds).toBeLessThan(6)
+  expect(measured.long.rendered).toBeLessThan(4)
 })

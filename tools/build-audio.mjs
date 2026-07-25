@@ -119,18 +119,15 @@ const SFX = [
   { from: 'ambience/lecture/lecture-pen-writing.mp3', to: 'sfx/pen.mp3', start: 0.4, duration: 5.5 },
 ]
 
-/**
- * Вокализы симлиша. Отрендерены прототипом (proto-src/simlish.py) в WAV
- * и обрабатываются как разовые звуки: моно, выровнены по пику. Голос
- * должен звучать одинаково громко у обоих персонажей — разницу между
- * ними делают высота и форманты, а не то, кого ближе поднесли к микрофону.
+/*
+ * Голосов этот сборщик не кладёт, и класть их некуда.
+ *
+ * Симлиш синтезируется в игре на Web Audio (src/render/audio/simlish.ts)
+ * по той же схеме, по которой отрендерен прототип proto-src/simlish.py.
+ * Файлами лежали бы два голоса на четыре интонации; синтезом выходит
+ * шесть голосов, длина под каждую реплику и ни одного повтора —
+ * при нуле байт. Подробности: research/assets-audio.md, §1.4.
  */
-const VOICE = ['marey', 'alieva'].flatMap((bank) =>
-  ['statement', 'question', 'cheerful', 'displeased'].map((emotion) => ({
-    from: `simlish-proto/${bank}-${emotion}.wav`,
-    to: `voice/${bank}-${emotion}.mp3`,
-  })),
-)
 
 function run(args) {
   execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', ...args], {
@@ -294,4 +291,3 @@ mkdirSync(TARGET, { recursive: true })
 report('музыка', MUSIC.map(convertMusic))
 report('атмосфера', AMBIENCE.map(convertAmbience))
 report('звуки', SFX.map(convertSfx))
-report('голоса', VOICE.map(convertSfx))

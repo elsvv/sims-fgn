@@ -1,5 +1,7 @@
 import type { Vec2 } from '../../sim/types'
-import type { SoundId, VoiceBank, VoiceEmotion } from './catalog'
+import type { SoundId } from './catalog'
+import { seedFrom, syllablesForText } from './phrase'
+import { isVoiceId, type VoiceEmotion, type VoiceId } from './voices'
 
 /**
  * Что в мире случилось такого, что должно быть слышно.
@@ -36,6 +38,29 @@ export interface AudioInteraction {
   readonly working: boolean
 }
 
+/** Выступление на семинаре и то, чем преподаватель на него ответил. */
+export interface AudioSpeech {
+  /** Ключ пары с вариантом: два выступления подряд — два разных ключа. */
+  readonly key: string
+  readonly success: boolean
+  /** Кто отвечает. null — отвечать некому, преподавателя нет. */
+  readonly teacherId: string | null
+  /** Реплика преподавателя: по ней считается длина вокализа. */
+  readonly reply: string | null
+  /** Где он стоит. */
+  readonly at: Vec2 | null
+}
+
+/** Преподаватель, ближе которого рядом никого нет. */
+export interface AudioNeighbour {
+  readonly id: string
+  readonly at: Vec2
+  /** Расстояние до игрока, метры. */
+  readonly distance: number
+  /** Хорошие ли отношения: от этого зависит, как он здоровается. */
+  readonly warm: boolean
+}
+
 /** Состояние мира глазами звука. Всё, что нужно, и ничего сверх. */
 export interface AudioFrame {
   readonly playerAt: Vec2
@@ -48,8 +73,10 @@ export interface AudioFrame {
   readonly lessonKey: string | null
   readonly interaction: AudioInteraction | null
   /** Выступление на семинаре: ключ пары с вариантом и чем оно кончилось. */
-  readonly speech: { readonly key: string; readonly success: boolean } | null
+  readonly speech: AudioSpeech | null
   readonly line: AudioLine | null
+  /** Ближайший преподаватель. null — рядом никого. */
+  readonly neighbour: AudioNeighbour | null
 }
 
 /** Разовый звук, который надо издать. */
@@ -61,13 +88,33 @@ export interface SoundCue {
   readonly delay: number
 }
 
-/** Вокализ под реплику. */
+/**
+ * Вокализ: всё, что нужно синтезатору, и ничего про Web Audio.
+ *
+ * Здесь нет ни громкости голоса, ни его высоты: они лежат в пресете
+ * человека (voices.ts) и достаются по `voiceId`. Событие сообщает,
+ * кто говорит, с какой интонацией и как долго, — остальное дело синтеза.
+ */
 export interface VoiceCue {
-  readonly bank: VoiceBank
+  readonly voiceId: VoiceId
   readonly emotion: VoiceEmotion
-  /** Скорость воспроизведения: она же высота голоса. */
-  readonly rate: number
-  readonly gain: number
+  /** Сколько слогов бормотать. Считается по длине реплики. */
+  readonly syllables: number
+  /** Зерно: одна реплика всегда звучит одинаково, разные — по-разному. */
+  readonly seed: number
+  /** Где стоит говорящий. null — звук без места, слышен в полную силу. */
+  readonly at: Vec2 | null
+  /** Задержка перед началом, секунды. */
+  readonly delay: number
+  /**
+   * Можно ли перебить того, кто уже говорит.
+   *
+   * Реплика разговора перебивает: игрок читает её прямо сейчас, и она
+   * важнее всего, что звучало до неё. Приветствие — нет: на быстрой
+   * промотке преподаватели носятся по этажу, и здоровающиеся наперебой
+   * шестеро дали бы не жизнь, а заикание.
+   */
+  readonly interrupts: boolean
 }
 
 export interface AudioEvents {
@@ -135,36 +182,27 @@ export function voiceEmotionFor(line: Pick<AudioLine, 'text' | 'tone'>): VoiceEm
 }
 
 /**
- * Кто каким голосом говорит.
+ * Расстояние, ближе которого преподаватель здоровается, метры.
  *
- * Записанных вокализов два: мужской (Марей) и женский (Алиева).
- * Остальные говорят теми же записями, но с другой скоростью — она тянет
- * за собой и высоту тона, поэтому одного числа хватает, чтобы Долгоруков
- * не звучал Мареем. За пределами 0.85–1.25 симлиш перестаёт звучать
- * по-человечески и становится бурундуком или трактором.
- *
- * Поправка громкости — оттуда же: сдвинутый по высоте голос слышно
- * иначе, чем исходный, и без неё быстрые голоса лезут вперёд.
+ * Полтора корпуса: столько между людьми, когда один подошёл к другому,
+ * а не прошёл мимо.
  */
-export interface VoiceProfile {
-  readonly bank: VoiceBank
-  readonly rate: number
-  readonly gain: number
-}
+export const GREETING_ENTER = 2.5
 
-export const VOICES: Readonly<Record<string, VoiceProfile>> = {
-  marey: { bank: 'marey', rate: 1, gain: 1 },
-  mikhailovsky: { bank: 'marey', rate: 1.1, gain: 0.95 },
-  pavlov: { bank: 'marey', rate: 1.17, gain: 0.92 },
-  dolgorukov: { bank: 'marey', rate: 0.9, gain: 1 },
-  alieva: { bank: 'alieva', rate: 1, gain: 1 },
-  krechetova: { bank: 'alieva', rate: 0.93, gain: 1 },
-}
+/**
+ * Расстояние, дальше которого встреча считается законченной, метры.
+ *
+ * Второй порог нужен ровно затем, чтобы игрок, топчущийся ровно на
+ * границе первого, не выслушивал «здравствуйте» десять раз в секунду.
+ * Поздороваются снова только после того, как он отойдёт по-настоящему.
+ */
+export const GREETING_LEAVE = 4.5
 
-/** Голос, которым говорит этот человек. Незнакомого никто не озвучивает. */
-export function voiceProfileFor(speakerId: string): VoiceProfile | null {
-  return VOICES[speakerId] ?? null
-}
+/** Приветствие короткое: два-три слога, а не речь. */
+export const GREETING_SYLLABLES = 3
+
+/** Через сколько секунд после оценки отвечает преподаватель. */
+const REACTION_DELAY = GRADE_DELAY + 0.55
 
 function cue(id: SoundId, at: Vec2 | null, delay = 0): SoundCue {
   return { id, at, delay }
@@ -209,19 +247,95 @@ export function detectAudioEvents(
     cues.push(cue(speech.success ? 'grade-good' : 'grade-bad', null, GRADE_DELAY))
   }
 
-  const voice = voiceFor(previous.line, current.line)
+  const voice = voiceOf(previous, current)
   return cues.length === 0 && voice === null ? NOTHING : { cues, voice }
 }
 
+/**
+ * Кто из троих говорит.
+ *
+ * Голос в игре один и перебивать сам себя не имеет права, поэтому из
+ * трёх поводов заговорить выбирается ровно один. Порядок не случаен:
+ * реплика на экране важнее всего — её игрок читает прямо сейчас;
+ * ответ на семинаре важнее приветствия; приветствие уступает всему.
+ */
+function voiceOf(previous: AudioFrame, current: AudioFrame): VoiceCue | null {
+  return (
+    lineVoice(previous.line, current.line) ??
+    speechVoice(previous.speech, current.speech) ??
+    greetingVoice(previous.neighbour, current.neighbour)
+  )
+}
+
 /** Вокализ под новую реплику. Та же реплика второй раз не озвучивается. */
-function voiceFor(previous: AudioLine | null, current: AudioLine | null): VoiceCue | null {
+function lineVoice(previous: AudioLine | null, current: AudioLine | null): VoiceCue | null {
   if (current === null || current.key === previous?.key) return null
-  const profile = voiceProfileFor(current.speakerId)
-  if (profile === null) return null
+  if (!isVoiceId(current.speakerId)) return null
+  const syllables = syllablesForText(current.text)
+  if (syllables === 0) return null
   return {
-    bank: profile.bank,
+    voiceId: current.speakerId,
     emotion: voiceEmotionFor(current),
-    rate: profile.rate,
-    gain: profile.gain,
+    syllables,
+    // Зерно от ключа и текста сразу: ключ разводит одинаковые реплики
+    // разных узлов, текст — одинаковые узлы с разным текстом.
+    seed: seedFrom(`${current.speakerId}|${current.key}|${current.text}`),
+    at: null,
+    delay: 0,
+    interrupts: true,
+  }
+}
+
+/**
+ * Реакция преподавателя на выступление.
+ *
+ * Звучит не сразу: сначала гонг, потом оценка, и только потом человек
+ * открывает рот. Одновременно с оценкой это читалось бы как одно
+ * событие, а не как «сказал — выслушали — ответили».
+ */
+function speechVoice(previous: AudioSpeech | null, current: AudioSpeech | null): VoiceCue | null {
+  if (current === null || current.key === previous?.key) return null
+  const teacher = current.teacherId
+  if (teacher === null || !isVoiceId(teacher) || current.reply === null) return null
+  const syllables = syllablesForText(current.reply)
+  if (syllables === 0) return null
+  return {
+    voiceId: teacher,
+    // Похвала или выговор — это и есть эмоция, гадать по знакам
+    // препинания здесь незачем: результат известен точно.
+    emotion: current.success ? 'cheerful' : 'displeased',
+    syllables,
+    seed: seedFrom(`${teacher}|${current.key}|${current.reply}`),
+    at: current.at,
+    delay: REACTION_DELAY,
+    interrupts: true,
+  }
+}
+
+/**
+ * Приветствие при подходе.
+ *
+ * Здоровается тот, к кому подошли, и здоровается один раз за встречу.
+ * Тёплое приветствие достаётся не всем: преподаватель, который вас
+ * знает и к вам расположен, звучит иначе, чем тот, кому вы пока никто.
+ */
+function greetingVoice(
+  previous: AudioNeighbour | null,
+  current: AudioNeighbour | null,
+): VoiceCue | null {
+  if (current === null || current.distance > GREETING_ENTER) return null
+  if (!isVoiceId(current.id)) return null
+  const met = previous !== null && previous.id === current.id && previous.distance <= GREETING_LEAVE
+  if (met) return null
+  return {
+    voiceId: current.id,
+    emotion: current.warm ? 'cheerful' : 'statement',
+    syllables: GREETING_SYLLABLES,
+    // Человек здоровается всегда одинаково — но по-разному в зависимости
+    // от того, рад он вам или просто вежлив.
+    seed: seedFrom(`привет|${current.id}|${current.warm ? 'тепло' : 'ровно'}`),
+    at: current.at,
+    delay: 0,
+    interrupts: false,
   }
 }

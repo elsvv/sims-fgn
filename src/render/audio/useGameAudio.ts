@@ -177,7 +177,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       const frame = audioFrameOf(snapshot, world.activeInteraction, positions)
       const events = detectAudioEvents(previous, frame)
       for (const cue of events.cues) mixer.play(cue, frame.playerAt)
-      if (events.voice !== null) mixer.speak(events.voice)
+      if (events.voice !== null) mixer.speak(events.voice, frame.playerAt)
       previous = frame
 
       const walk = advanceSteps(steps, frame.moving, now, STEP_LOOKAHEAD, snapshot.speed)

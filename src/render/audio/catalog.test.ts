@@ -7,7 +7,6 @@ import {
   SOUNDS,
   SYNTH_IDS,
   STEP_SOUNDS,
-  allVoiceSrc,
   isSynth,
   type SoundId,
 } from './catalog'
@@ -40,7 +39,6 @@ function everySrc(): string[] {
     ...Object.values(SOUNDS)
       .map((sound) => sound.src)
       .filter((src): src is string => src !== null),
-    ...allVoiceSrc(),
   ]
 }
 
@@ -52,9 +50,10 @@ describe('каталог звука', () => {
   })
 
   it('файлов в каталоге столько, сколько кладёт сборщик', () => {
-    // Шесть треков, шесть слоёв атмосферы, двенадцать записанных звуков
-    // и восемь вокализов — ровно то, что перечислено в tools/build-audio.mjs.
-    expect(everySrc()).toHaveLength(6 + 6 + 12 + 8)
+    // Шесть треков, шесть слоёв атмосферы и двенадцать записанных
+    // звуков — ровно то, что перечислено в tools/build-audio.mjs.
+    // Голосов в этом счёте нет: они синтезируются, см. simlish.ts.
+    expect(everySrc()).toHaveLength(6 + 6 + 12)
   })
 
   it('все пути ведут в /audio и заканчиваются на mp3', () => {

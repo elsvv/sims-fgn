@@ -24,6 +24,8 @@ import {
   interactionOf,
   lineOf,
   musicSituationOf,
+  neighbourOf,
+  speechOf,
   toneOfChanges,
 } from './frame'
 import { musicMoodFor } from './music'
@@ -269,5 +271,81 @@ describe('реплика на экране', () => {
     })
     expect(line?.tone).toBe('cold')
     expect(line?.text).toBe('Вот как.')
+  })
+})
+
+describe('преподаватель рядом', () => {
+  it('шестеро с этажа находятся, и у каждого есть расстояние', () => {
+    const world = createWorld()
+    const neighbour = neighbourOf(world.snapshot())
+    expect(neighbour).not.toBeNull()
+    expect(neighbour?.distance).toBeGreaterThan(0)
+    // Найденный — действительно преподаватель, а не безымянный студент:
+    // голос есть только у шестерых.
+    expect(Object.keys(TEACHERS)).toContain(neighbour?.id)
+  })
+
+  it('находится ближайший, а не первый попавшийся', () => {
+    const world = createWorld()
+    const snapshot = world.snapshot()
+    const neighbour = neighbourOf(snapshot)
+    expect(neighbour).not.toBeNull()
+    for (const npc of snapshot.npcs) {
+      if (npc.teacherId === null) continue
+      const dx = npc.position.x - snapshot.playerPosition.x
+      const dz = npc.position.z - snapshot.playerPosition.z
+      expect(Math.hypot(dx, dz)).toBeGreaterThanOrEqual(neighbour!.distance - 1e-9)
+    }
+  })
+
+  it('незнакомый преподаватель здоровается ровно', () => {
+    // В начале игры игрок не знаком ни с кем: тёплых приветствий
+    // взяться неоткуда.
+    const world = createWorld()
+    expect(neighbourOf(world.snapshot())?.warm).toBe(false)
+  })
+
+  it('на пустом этаже рядом никого', () => {
+    const world = createWorld()
+    expect(neighbourOf({ ...world.snapshot(), npcs: [] })).toBeNull()
+  })
+})
+
+describe('ответ преподавателя на выступление', () => {
+  it('снимок семинара приносит и реплику, и того, кто её говорит', () => {
+    // Связка целиком: поля берутся из настоящего снимка мира, и
+    // переименование любого из них должно ломать тест, а не звук.
+    const world = createWorld()
+    const snapshot = world.snapshot()
+    const speech = speechOf({
+      ...snapshot,
+      seminar: {
+        courseId: 'greek',
+        lessonId: 'greek-mon',
+        kind: 'seminar',
+        teacherId: 'alieva',
+        canSpeak: false,
+        reason: null,
+        options: [],
+        speech: {
+          occurrenceId: 'd3:greek-mon',
+          courseId: 'greek',
+          optionId: 'цитата',
+          teacherId: 'alieva',
+          grade: 9,
+          success: true,
+          reply: 'Прекрасно: вы проверили ссылку.',
+        },
+      },
+    })
+    expect(speech?.teacherId).toBe('alieva')
+    expect(speech?.reply).toBe('Прекрасно: вы проверили ссылку.')
+    expect(speech?.success).toBe(true)
+    expect(speech?.key).toBe('d3:greek-mon|цитата')
+  })
+
+  it('без семинара отвечать нечего', () => {
+    const world = createWorld()
+    expect(speechOf(world.snapshot())).toBeNull()
   })
 })

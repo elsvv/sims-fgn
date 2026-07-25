@@ -147,25 +147,13 @@ export function isSynth(id: SoundId): id is SynthId {
   return (SYNTH_IDS as readonly SoundId[]).includes(id)
 }
 
-/** Чей голос взят за основу вокализа. */
-export type VoiceBank = 'marey' | 'alieva'
-
-/** Интонация вокализа. Ровно то, что отрендерено в public/audio/voice. */
-export type VoiceEmotion = 'statement' | 'question' | 'cheerful' | 'displeased'
-
-export function voiceSrc(bank: VoiceBank, emotion: VoiceEmotion): string {
-  return `/audio/voice/${bank}-${emotion}.mp3`
-}
-
-export const VOICE_BANKS: readonly VoiceBank[] = ['marey', 'alieva']
-export const VOICE_EMOTIONS: readonly VoiceEmotion[] = [
-  'statement',
-  'question',
-  'cheerful',
-  'displeased',
-]
-
-/** Все восемь вокализов: их тянут разом, вместе они весят 170 КБ. */
-export function allVoiceSrc(): readonly string[] {
-  return VOICE_BANKS.flatMap((bank) => VOICE_EMOTIONS.map((emotion) => voiceSrc(bank, emotion)))
-}
+/*
+ * Голосов в этом каталоге нет, и это не упущение.
+ *
+ * Симлиш не лежит файлами: он синтезируется на месте формантным
+ * синтезом (voices.ts — тембры, phrase.ts — разбор реплики,
+ * simlish.ts — Web Audio). Причина в том, что набором записей не
+ * решаются сразу три вещи: шесть разных голосов вместо двух, длина
+ * вокализа под длину конкретной реплики и отсутствие повторов при
+ * сотнях реплик. Подробности — research/assets-audio.md, §1.4.
+ */
