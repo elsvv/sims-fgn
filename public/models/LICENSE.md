@@ -53,13 +53,52 @@ Dedication)**. Авторы отказались от прав: коммерче
 
 ## Персонажи — `characters/`
 
-Если каталог `characters/` присутствует, его содержимое взято отсюда:
-
 - **Автор:** Quaternius (Tomás Laulhé) — https://quaternius.com
-- **Наборы:** Ultimate Modular Men / Women, Universal Animation Library
+- **Набор:** Ultimate Modular Characters — Men / Women
+  - https://quaternius.com/packs/ultimatemodularmen.html
+  - https://quaternius.com/packs/ultimatemodularwomen.html
 - **Лицензия:** CC0 1.0 Universal
-- **Оригинальные файлы лицензий:** `assets-research/characters/LICENSE.md`
+- **Оригинальный файл лицензии от автора:**
+  `assets-research/characters/quaternius-ultimate-modular/men/License.txt`
+- **Полные сведения и SHA-256 всех исходных файлов:**
+  `assets-research/characters/LICENSE.md`
 - **Поддержать автора (по желанию):** https://www.patreon.com/quaternius
+
+Дословно из `License.txt`:
+
+> This work is licensed under CC0 1.0 Universal (CC0 1.0)
+> Public Domain Dedication
+> http://creativecommons.org/publicdomain/zero/1.0/
+
+Взято восемь моделей из двадцати одной. Готовой модели ни одного из
+шестерых преподавателей в наборе нет — каждый собирается перестановкой
+частей на общем скелете, поэтому файлов больше, чем людей, и меньше,
+чем было бы при модели на человека.
+
+| Файл | Кем стал в игре |
+|---|---|
+| `men/Casual_2.glb` | Павлов и Долгоруков целиком; ноги Марею, голова игроку |
+| `men/Casual_Hoodie.glb` | Марей — свитер |
+| `men/Adventurer.glb` | игрок; борода и грива Марею |
+| `men/Suit.glb` | Михайловский |
+| `women/Suit.glb` | Алиева |
+| `women/Casual.glb` | Кречетова; светлый боб Алиевой |
+| `women/Formal.glb` | кудри Долгорукову (только голова) |
+| `women/SciFi.glb` | убранные волосы Кречетовой (только голова) |
+| `animations.glb` | стояние и ходьба для всех |
+
+Файлы пересобраны из исходных `.gltf` скриптом
+`tools/build-character-models.mjs`: перегнаны в `.glb`, анимации вырезаны
+в один общий файл, у двух моделей оставлена только голова, из геометрии
+выброшены неиспользуемые атрибуты, а из сцены — оружие (`Pistol`),
+которое автор кладёт прямо в сцену персонажа. Было 24 МБ, стало 3,9 МБ.
+CC0 разрешает любые изменения без всяких условий.
+
+Библиотека анимаций **Universal Animation Library** того же автора скачана
+в `assets-research/`, но в сборку не попала: её скелет отличается от
+скелета моделей, и перенос клипов требует отдельной работы в Blender
+(research/assets-characters.md, §7.3). Стояние и ходьба взяты из самих
+моделей.
 
 ## Строка для титров
 

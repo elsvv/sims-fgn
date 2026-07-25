@@ -3,7 +3,7 @@ import { Suspense, useMemo, type ReactNode } from 'react'
 import type { FloorPlan, PropPlacement } from '../../sim/world/FloorPlan'
 import type { PropCatalog, PropDefinition } from '../../sim/world/PropDefinition'
 import { dragAwareClick } from '../input/sceneClicks'
-import { ModelErrorBoundary } from './ModelErrorBoundary'
+import { ModelErrorBoundary } from '../ModelErrorBoundary'
 import { PropModelInstances } from './PropModelInstances'
 import {
   planPropRender,

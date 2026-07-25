@@ -12,13 +12,26 @@
  * sim/architecture.test.ts.
  */
 
+import type { CharacterModel } from './characterModel'
+
 export type HairStyle = 'short' | 'medium' | 'bald' | 'ponytail'
 export type FacialHair = 'none' | 'stubble' | 'beard' | 'moustache'
 
 /**
  * Параметрическое описание внешности. Конкретный человек — это набор
- * значений, а не отдельная модель. Тех же параметров хватит, чтобы позже
- * выбрать вариант готовой GLTF-модели.
+ * значений, а не отдельная модель.
+ *
+ * Описание одно, а рисующих компонентов два, и они взаимозаменяемы:
+ * `GltfCharacter` собирает человека из готовых моделей, `ProceduralCharacter`
+ * складывает его из капсул. Второй — не наследие, а запасной путь: файл
+ * может не доехать, и остаться без персонажей игра не должна.
+ *
+ * Поля делятся на две части. Цвета, рост и телосложение действуют
+ * в обоих компонентах. `model` — только в первом: он говорит, какие
+ * файлы набора дают телу форму. Признаки вроде `hairStyle` и
+ * `facialHair` рисует процедурный, а модельному они достаются
+ * силуэтом самой модели — гриву и бороду Марею даёт голова
+ * из `men/Adventurer`, а не отдельный параметр.
  */
 export interface CharacterAppearance {
   /** Рост в метрах. */
@@ -32,6 +45,16 @@ export interface CharacterAppearance {
   glasses: boolean
   top: string
   bottom: string
+  /** Из каких файлов набора собирается фигура. */
+  model: CharacterModel
+}
+
+/**
+ * Модель человека, о котором ничего не известно: футболка и джинсы.
+ * Она же достаётся всем, кто не назвал свою.
+ */
+export const DEFAULT_CHARACTER_MODEL: CharacterModel = {
+  base: { pack: 'men', name: 'Casual_2' },
 }
 
 function clamp01(value: number): number {
@@ -51,6 +74,7 @@ export function createAppearance(
     glasses: false,
     top: '#41516b',
     bottom: '#2d3138',
+    model: DEFAULT_CHARACTER_MODEL,
     ...overrides,
   }
   merged.build = clamp01(merged.build)

@@ -1,7 +1,9 @@
 import { OrbitControls, useGLTF } from '@react-three/drei'
 import { Canvas, useFrame } from '@react-three/fiber'
 import { FLOOR_A2, FLOOR_A2_SPAWN } from '../content/floors/floorA2'
+import { ALL_APPEARANCES } from '../content/people/appearances'
 import { PROP_CATALOG } from '../content/props/propCatalog'
+import { characterModelUrls } from '../shared/characterModel'
 import { FloorMesh } from './building/FloorMesh'
 import { propModelUrls } from './building/propGroups'
 import { NpcCharacters } from './character/NpcCharacters'
@@ -28,6 +30,21 @@ const CAMERA_OFFSET = { x: 6.5, y: 11, z: 7.5 }
  * Все девять файлов вместе весят меньше полутора сотен килобайт.
  */
 for (const url of propModelUrls(PROP_CATALOG)) useGLTF.preload(url)
+
+/**
+ * Предзагрузка моделей людей. Тот же приём и та же причина, но цена
+ * ошибки выше: обстановка стоит на месте, а человек, всплывший из
+ * капсульного человечка посреди разговора, — это подмена собеседника
+ * на глазах у игрока.
+ *
+ * Файлов девять на всех: тела повторяются (Павлов и Долгоруков собраны
+ * на одном), а анимации лежат одним общим файлом. Набор собирается
+ * из внешностей, а не перечисляется руками: добавить человека — значит
+ * дописать строчку в appearances.ts, и предзагрузка подхватит её сама.
+ */
+for (const url of new Set(ALL_APPEARANCES.flatMap((look) => characterModelUrls(look.model)))) {
+  useGLTF.preload(url)
+}
 
 /** Гоняет симуляцию в такт кадрам. Ничего не рисует. */
 function SimulationLoop() {

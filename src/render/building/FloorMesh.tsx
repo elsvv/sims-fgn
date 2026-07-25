@@ -2,6 +2,7 @@ import { useFrame, useThree } from '@react-three/fiber'
 import { useMemo, useState } from 'react'
 import type { FloorPlan, TileKind } from '../../sim/world/FloorPlan'
 import type { PropCatalog } from '../../sim/world/PropDefinition'
+import { DOOR_COLOR, FLOOR_COLOR, WALL_COLOR, WALL_TOP_COLOR } from './palette'
 import { PropsLayer } from './PropsLayer'
 import { buildWallSegments } from './wallSegments'
 
@@ -19,17 +20,6 @@ interface ViewSide {
 
 /** Высота стены в метрах. Отсюда же её берут срезанные перегородки. */
 export const WALL_HEIGHT = 3
-
-const FLOOR_COLOR = '#b9ab93'
-const WALL_COLOR = '#e6e1d6'
-const DOOR_COLOR = '#7a5c3a'
-
-/**
- * Верх стены — это её срез, и он темнее боковой поверхности. Без этого
- * срезанные перегородки сливаются в одно белёсое плато, по которому
- * невозможно прочитать, где кончается одна стена и начинается другая.
- */
-const WALL_TOP_COLOR = '#cdc3b1'
 
 /**
  * Крышка стены — отдельная плоскость поверх бокса, только чтобы покрасить

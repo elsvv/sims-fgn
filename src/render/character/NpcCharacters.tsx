@@ -10,7 +10,8 @@ import type { Npc } from '../../sim/npc/Npc'
 import type { World } from '../../sim/World'
 import { dragAwareClick } from '../input/sceneClicks'
 import { useWorld } from '../useWorld'
-import { ProceduralCharacter } from './ProceduralCharacter'
+import { Character } from './Character'
+import { characterYaw, GLTF_FACING_OFFSET } from './facing'
 
 /** На сколько подпись висит выше макушки, в метрах. */
 const LABEL_LIFT = 0.3
@@ -94,8 +95,7 @@ function NpcCharacter({ npc }: { npc: Npc }) {
     if (!group.current) return
     const { position, facing } = npc.actor
     group.current.position.set(position.x, 0, position.z)
-    // Модель смотрит вдоль +Z, поэтому доворачиваем на четверть оборота.
-    group.current.rotation.y = -facing + Math.PI / 2
+    group.current.rotation.y = characterYaw(facing, GLTF_FACING_OFFSET)
 
     const moving = isMoving(npc.actor)
     setWalking((prev) => (prev === moving ? prev : moving))
@@ -103,7 +103,7 @@ function NpcCharacter({ npc }: { npc: Npc }) {
 
   return (
     <group ref={group} onClick={dragAwareClick(handleClick)}>
-      <ProceduralCharacter appearance={appearance} walking={walking} />
+      <Character appearance={appearance} walking={walking} />
       {label && (
         <Html
           position={[0, appearance.height + LABEL_LIFT, 0]}

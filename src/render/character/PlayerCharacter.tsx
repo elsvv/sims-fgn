@@ -1,24 +1,11 @@
 import { useFrame } from '@react-three/fiber'
 import { useRef, useState } from 'react'
 import type { Group } from 'three'
+import { PLAYER_APPEARANCE } from '../../content/people/appearances'
 import { isMoving } from '../../sim/actor/Actor'
 import { useWorld } from '../useWorld'
-import { createAppearance } from '../../shared/appearance'
-import { ProceduralCharacter } from './ProceduralCharacter'
-
-/**
- * Игрок одет ярче всех остальных. Это не вкусовщина: пол бежевый, стены
- * почти белые, предметы приглушённые — синяя куртка на таком фоне терялась,
- * а в тени становилась неотличима от тёмного силуэта автомата. Тёплый
- * терракотовый верх не встречается больше нигде на этаже, поэтому фигуру
- * видно с любого ракурса и на любом расстоянии.
- */
-const PLAYER_LOOK = createAppearance({
-  height: 1.78,
-  top: '#d2622e',
-  bottom: '#39414f',
-  hairStyle: 'medium',
-})
+import { Character } from './Character'
+import { characterYaw, GLTF_FACING_OFFSET } from './facing'
 
 /**
  * Связывает актора из симуляции с его визуальным представлением.
@@ -37,8 +24,7 @@ export function PlayerCharacter() {
     if (!group.current) return
     const { position, facing } = world.player
     group.current.position.set(position.x, 0, position.z)
-    // Модель смотрит вдоль +Z, поэтому доворачиваем на четверть оборота.
-    group.current.rotation.y = -facing + Math.PI / 2
+    group.current.rotation.y = characterYaw(facing, GLTF_FACING_OFFSET)
 
     const moving = isMoving(world.player)
     setWalking((prev) => (prev === moving ? prev : moving))
@@ -46,7 +32,7 @@ export function PlayerCharacter() {
 
   return (
     <group ref={group}>
-      <ProceduralCharacter appearance={PLAYER_LOOK} walking={walking} />
+      <Character appearance={PLAYER_APPEARANCE} walking={walking} />
     </group>
   )
 }

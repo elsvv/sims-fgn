@@ -3,6 +3,8 @@ import { Component, type ReactNode } from 'react'
 interface Props {
   children: ReactNode
   fallback: ReactNode
+  /** Что подменилось, для сообщения в консоль: «предмет», «человек». */
+  what?: string
 }
 
 interface State {
@@ -19,6 +21,11 @@ interface State {
  *
  * Ловушка обязана быть классом: другого способа перехватить ошибку
  * отрисовки в React нет.
+ *
+ * Ловушка одна на обстановку и на людей: причина у них общая — файл, —
+ * и запасной путь устроен одинаково. Разница только в том, чем
+ * подменяется: у предмета это цветной бокс, у человека — капсульный
+ * человечек, который до появления моделей и рисовал всех.
  */
 export class ModelErrorBoundary extends Component<Props, State> {
   state: State = { failed: false }
@@ -28,9 +35,12 @@ export class ModelErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: unknown): void {
-    // Сообщение в консоль, а не молчание: предмет подменился боксом,
-    // и человек, который это заметит, должен узнать причину.
-    console.error('Модель предмета не загрузилась, рисуется бокс:', error)
+    // Сообщение в консоль, а не молчание: на экране осталась запасная
+    // геометрия, и человек, который это заметит, должен узнать причину.
+    console.error(
+      `Модель (${this.props.what ?? 'предмет'}) не загрузилась, рисуется запасная геометрия:`,
+      error,
+    )
   }
 
   render(): ReactNode {
