@@ -377,6 +377,56 @@ test('дорога за кофе: камера, автомат и выросша
   await page.screenshot({ path: 'screenshots/53-coffee.png', fullPage: true })
 })
 
+test('сохранение переживает перезагрузку страницы', async ({ page }) => {
+  /*
+   * save.spec проверяет круг «сохранить — загрузить» внутри одной
+   * страницы. Игрок так не делает: он закрывает вкладку и возвращается
+   * назавтра. Между этими двумя случаями лежит всё, что живёт в памяти
+   * вкладки, а не в localStorage, — и проверить это можно только
+   * настоящей перезагрузкой.
+   */
+  await openFloor(page)
+
+  // Уводим персонажа с места появления, чтобы в сохранении было что
+  // отличать от новой партии.
+  const box = await canvasBox(page)
+  await page.mouse.click(box.x + box.width * 0.3, box.y + box.height * 0.54)
+  await page.waitForTimeout(2500)
+
+  await page.locator('.hud__gamemenu').click()
+  const slots = page.locator('.saveslot')
+  await slots.nth(1).getByText('Сохранить').click()
+  await expect(page.locator('.savemenu__notice')).toContainText('Игра сохранена')
+
+  const savedAt = await page.locator('.hud__clock').textContent()
+  const savedWhere = await page.locator('.hud__where').textContent()
+  expect(savedAt).toMatch(/^\d{2}:\d{2}$/)
+
+  await page.getByText('Вернуться в игру').click()
+
+  // --- Перезагрузка ---
+  await page.reload()
+  await expect(page.locator('canvas')).toBeVisible()
+  await page.waitForTimeout(SCENE_READY_MS)
+
+  // Новая вкладка начинает с понедельничного утра: сохранение само
+  // не подхватывается, и это правильно — загрузку выбирает игрок.
+  await expect(page.locator('.hud__day')).toHaveText('Неделя 1, понедельник')
+
+  await page.locator('.hud__gamemenu').click()
+  await expect(
+    slots.nth(1).locator('.saveslot__when'),
+    'после перезагрузки слот опустел',
+  ).toContainText(String(savedAt))
+  await slots.nth(1).getByText('Загрузить').click()
+
+  await expect(page.locator('.savemenu')).toHaveCount(0)
+  await expect(page.locator('.hud__clock')).toHaveText(String(savedAt))
+  await expect(page.locator('.hud__where')).toHaveText(String(savedWhere))
+
+  await page.screenshot({ path: 'screenshots/55-loaded-after-reload.png', fullPage: true })
+})
+
 test('конец дня: лечь на скамейку и прочитать, как день прошёл', async ({ page }) => {
   await openFloor(page)
 
