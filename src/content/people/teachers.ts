@@ -96,7 +96,7 @@ export const TEACHERS: TeacherCatalog = {
     id: 'marey',
     short: 'Марей',
     name: 'Марей Александр Владимирович',
-    courseIds: ['nis'],
+    courseIds: ['nis', 'history'],
     factionPosition: 45,
     factionTolerance: 40,
     lines: {
@@ -236,7 +236,7 @@ export const TEACHERS: TeacherCatalog = {
     id: 'dolgorukov',
     short: 'Долгоруков',
     name: 'Долгоруков Виталий Владимирович',
-    courseIds: ['logic'],
+    courseIds: ['logic', 'digital'],
     factionPosition: -85,
     factionTolerance: 50,
     lines: {
