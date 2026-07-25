@@ -6,7 +6,7 @@ import { PROP_CATALOG } from '../content/props/propCatalog'
 import { characterModelUrls } from '../shared/characterModel'
 import { FloorMesh } from './building/FloorMesh'
 import { propModelUrls } from './building/propGroups'
-import { NpcCharacters } from './character/NpcCharacters'
+import { ApproachTalk, NpcCharacters } from './character/NpcCharacters'
 import { PlayerCharacter } from './character/PlayerCharacter'
 import { ClickToMove } from './input/ClickToMove'
 import { useWorld } from './useWorld'
@@ -61,6 +61,7 @@ function Scene({ onSelectProp }: { onSelectProp: (propId: string) => void }) {
       <ClickToMove />
       <PlayerCharacter />
       <NpcCharacters />
+      <ApproachTalk />
     </>
   )
 }

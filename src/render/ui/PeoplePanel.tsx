@@ -10,9 +10,16 @@ function nameOf(record: RelationshipInfo): string {
   return TEACHERS[record.teacherId]?.short ?? record.npcId
 }
 
-/** С кем уже что-то произошло. Незнакомых в списке нет — иначе он вечно полон. */
+/**
+ * С кем уже что-то произошло. Незнакомых в списке нет — иначе он вечно полон.
+ *
+ * Двух условий, а не одного: разговор бывает и без последствий. Игрок,
+ * ответивший преподавателю «просто жду пару», выходил из окна разговора
+ * и читал под ним «вы ещё ни с кем не говорили» — панель называла ложью
+ * то, что он только что сделал на своих глазах.
+ */
 function isKnown(record: RelationshipInfo): boolean {
-  return standingOf(record).length > 0
+  return record.met || standingOf(record).length > 0
 }
 
 /**
@@ -25,20 +32,31 @@ function isKnown(record: RelationshipInfo): boolean {
  * какими подписаны последствия реплик в окне разговора.
  */
 function Person({ record }: { record: RelationshipInfo }) {
+  const standings = standingOf(record)
+
   return (
     <div className="person">
       <div className="person__head">
         <span className="person__name">{nameOf(record)}</span>
         <span className="person__level">{record.label}</span>
       </div>
-      {standingOf(record).map((standing) => (
-        <div className="person__standing" key={standing.dimension}>
-          <span className="person__standing-text">{standing.text}</span>
-          <span className={`person__marker person__marker--${standing.direction}`}>
-            {standing.marker}
-          </span>
+      {standings.length === 0 ? (
+        // Разговор был, а следа не оставил. Пустая строка на этом месте
+        // читалась бы как недогруженные данные, поэтому молчание названо
+        // вслух — и без чисел, как всё остальное в панели.
+        <div className="person__standing">
+          <span className="person__standing-text">Поговорили, и только</span>
         </div>
-      ))}
+      ) : (
+        standings.map((standing) => (
+          <div className="person__standing" key={standing.dimension}>
+            <span className="person__standing-text">{standing.text}</span>
+            <span className={`person__marker person__marker--${standing.direction}`}>
+              {standing.marker}
+            </span>
+          </div>
+        ))
+      )}
     </div>
   )
 }

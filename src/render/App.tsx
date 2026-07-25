@@ -6,6 +6,7 @@ import { AudioPanel } from './ui/AudioPanel'
 import { ConversationPanel } from './ui/ConversationPanel'
 import { DayScreen } from './ui/DayScreen'
 import { DialoguePanel } from './ui/DialoguePanel'
+import { HintPanel } from './ui/HintPanel'
 import './ui/hud.css'
 import { InteractionMenu } from './ui/InteractionMenu'
 import { NeedsPanel } from './ui/NeedsPanel'
@@ -46,6 +47,10 @@ function Hud({
       <SkillsPanel />
       <AudioPanel />
       <ActivityLabel />
+      <HintPanel />
+      {/* Подсказка первой минуты стоит там же, внизу по центру, и уходит
+          от первого действия игрока — то есть раньше, чем на это место
+          придёт панель выступления или окно разговора. */}
       <SeminarPanel />
       <InteractionMenu propId={selectedProp} onClose={onCloseMenu} />
       {/* Окна разговоров объявлены последними: они перекрывают всё

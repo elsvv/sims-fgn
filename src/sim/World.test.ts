@@ -875,6 +875,141 @@ describe('World: начало разговора', () => {
   })
 })
 
+/**
+ * Тот же коридор, но с кофейным автоматом в дальнем конце: нужен, чтобы
+ * проверить, что дорога к предмету отменяет намерение заговорить.
+ */
+function makeTalkPropWorld(): World {
+  const plan: FloorPlan = {
+    ...STUDY_PLAN,
+    props: [{ id: 'coffee-1', kind: 'coffeeMachine', col: 8, row: 2, rotation: 0, blocks: true }],
+  }
+  return new World(plan, FAR_END_OF_CORRIDOR, CATALOG, null, MOODLET_CATALOG, TALK_NPCS, {
+    teachers: TALK_TEACHERS,
+    dialogues: TALK_DIALOGUES,
+  })
+}
+
+/** Гоняет мир, пока персонаж идёт. Возвращает мир на месте остановки. */
+function walkOut(world: World, steps = 900): void {
+  world.clock.speed = 3
+  for (let i = 0; i < steps && isMoving(world.player); i++) world.tick(0.05)
+  // Ещё один тик уже стоя: именно он замечает, что персонаж дошёл.
+  world.tick(0.05)
+}
+
+describe('World: подошёл — значит заговорил', () => {
+  it('дойдя до собеседника, персонаж отдаёт его разговору сам', () => {
+    const world = makeTalkWorld(FAR_END_OF_CORRIDOR)
+    expect(world.startDialogue('continental-hall')).toBe(false)
+
+    world.commandApproachNpc('teacher-continental')
+    walkOut(world)
+
+    expect(world.takeArrival()).toBe('teacher-continental')
+  })
+
+  it('пока идёт — молчит: разговор не начинается на полпути', () => {
+    const world = makeTalkWorld(FAR_END_OF_CORRIDOR)
+    world.commandApproachNpc('teacher-continental')
+    world.clock.speed = 1
+    world.tick(0.05)
+
+    expect(isMoving(world.player)).toBe(true)
+    expect(world.takeArrival()).toBeNull()
+  })
+
+  it('прибытие отдаётся один раз: отойдя молча, разговор не начинают заново', () => {
+    const world = makeTalkWorld(FAR_END_OF_CORRIDOR)
+    world.commandApproachNpc('teacher-continental')
+    walkOut(world)
+
+    expect(world.takeArrival()).toBe('teacher-continental')
+    world.tick(0.05)
+    expect(world.takeArrival()).toBeNull()
+  })
+
+  it('передумал по дороге — щелчок по полу отменяет разговор', () => {
+    const world = makeTalkWorld(FAR_END_OF_CORRIDOR)
+    world.commandApproachNpc('teacher-continental')
+    world.clock.speed = 1
+    world.tick(0.05)
+
+    // Персонаж идёт обратно, туда, откуда шёл: он оказывается далеко
+    // от собеседника, и заговаривать не с кем.
+    world.commandMoveTo(FAR_END_OF_CORRIDOR)
+    walkOut(world)
+
+    expect(world.takeArrival()).toBeNull()
+  })
+
+  it('пошёл к предмету — намерение заговорить снято', () => {
+    const world = makeTalkPropWorld()
+    world.commandApproachNpc('teacher-continental')
+    world.commandInteract('coffee-1', 'drinkCoffee')
+    walkOut(world)
+
+    // Персонаж пошёл за кофе, а не к собеседнику, и разговора не заводит.
+    expect(world.activeInteraction?.interactionId).toBe('drinkCoffee')
+    expect(world.takeArrival()).toBeNull()
+  })
+
+  it('стоя вплотную, персонаж и подходить не идёт, и заговорить готов', () => {
+    // Клетка подхода к «континентальному» — та, на которой персонаж
+    // уже стоит: идти некуда, а заговорить можно сразу.
+    const world = makeTalkWorld({ col: 3, row: 2 })
+    expect(world.commandApproachNpc('teacher-continental')).toBe(true)
+
+    expect(isMoving(world.player)).toBe(false)
+    expect(world.takeArrival()).toBe('teacher-continental')
+  })
+})
+
+describe('World: с кем уже говорили', () => {
+  /** Запись об этом человеке в снимке состояния. */
+  function recordOf(world: World, npcId: string) {
+    return world.snapshot().relationships.find((item) => item.npcId === npcId)
+  }
+
+  it('до первого разговора незнакомы все', () => {
+    const world = makeTalkWorld()
+    expect(world.snapshot().relationships.every((item) => !item.met)).toBe(true)
+  })
+
+  it('разговор без последствий — тоже разговор', () => {
+    const world = makeTalkWorld()
+    world.startDialogue('continental-hall')
+    // «Промолчать» не двигает ни уважения, ни симпатии: если считать
+    // знакомство по отношениям, человек останется незнакомым.
+    world.chooseOption('safe')
+    world.endDialogue()
+
+    const record = recordOf(world, 'teacher-continental')
+    expect(record?.respect).toBe(0)
+    expect(record?.affection).toBe(0)
+    expect(record?.met).toBe(true)
+  })
+
+  it('знакомство не расползается на соседей', () => {
+    const world = makeTalkWorld()
+    world.startDialogue('continental-hall')
+    world.endDialogue()
+
+    expect(recordOf(world, 'teacher-analytic')?.met).toBe(false)
+  })
+
+  it('знакомство переживает сохранение', () => {
+    const world = makeTalkWorld()
+    world.startDialogue('continental-hall')
+    world.endDialogue()
+
+    const restored = makeTalkWorld()
+    restored.restoreState(world.captureState())
+
+    expect(recordOf(restored, 'teacher-continental')?.met).toBe(true)
+  })
+})
+
 describe('World: разговоры помнят друг о друге', () => {
   /** Идентификаторы реплик, открытых игроку в начатом разговоре. */
   function optionsOf(world: World): string[] {

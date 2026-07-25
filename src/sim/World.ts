@@ -207,6 +207,12 @@ export interface RelationshipInfo {
   respect: number
   /** Словесная оценка: «Незнакомы», «Знакомы», «Хорошие отношения». */
   label: string
+  /**
+   * Разговор между вами уже был. Не то же самое, что сдвинувшиеся
+   * отношения: сказать преподавателю «просто жду пару» — значит
+   * познакомиться, ничего при этом не изменив.
+   */
+  met: boolean
 }
 
 /** Реплика игрока в снимке состояния: только то, что видно в меню. */
@@ -572,6 +578,12 @@ export class World {
 
   /** Слепок утра: с ним сравниваются вечерние итоги. */
   private dayBaseline: DayBaseline
+  /** Карта «узел разговора → чей голос». Собирается по первому запросу. */
+  private nodeSpeakerCache: Map<string, string> | null = null
+  /** К кому персонаж идёт, чтобы заговорить. null — идёт по своим делам. */
+  private approachTarget: string | null = null
+  /** С кем персонаж только что поравнялся и ждёт, чтобы заговорить. */
+  private arrivedNpcId: string | null = null
   /** Сумма стресса, взвешенная по прожитым минутам. Нужна эпилогу. */
   private stressSum = 0
   /** Сколько игровых минут персонаж провёл бодрствуя. */
@@ -672,6 +684,7 @@ export class World {
     stepActor(this.player, this.grid, delta * this.clock.speed)
     this.npcManager.tick(this.grid, delta * this.clock.speed, day, minutes)
     this.advanceInteraction(gameMinutes)
+    this.updateApproach()
     this.updateAttendance()
 
     // Дизайн-документ, §3: после двух ночи персонаж вырубается где стоит.
@@ -682,6 +695,10 @@ export class World {
 
   commandMoveTo(target: GridPos): boolean {
     this.activeInteraction = null
+    // Щелчок по полу отменяет намерение заговорить: игрок передумал
+    // и пошёл по своим делам, а не к человеку.
+    this.approachTarget = null
+    this.arrivedNpcId = null
     return setDestination(this.player, this.grid, target)
   }
 
@@ -701,6 +718,10 @@ export class World {
 
     const approach = findApproachCell(this.grid, { col: placement.col, row: placement.row })
     if (!approach) return false
+
+    // Пошли к предмету — значит, не к человеку.
+    this.approachTarget = null
+    this.arrivedNpcId = null
 
     // Если персонаж уже стоит в клетке подхода, setDestination вернёт false —
     // это не ошибка, а признак того, что идти никуда не надо.
@@ -754,6 +775,8 @@ export class World {
     // setDestination вернёт false, и это не ошибка, а признак того,
     // что идти никуда не надо.
     setDestination(this.player, this.grid, approach)
+    this.approachTarget = null
+    this.arrivedNpcId = null
     this.activeDialogue = null
     this.activeChain = null
     this.activeInteraction = {
@@ -826,6 +849,9 @@ export class World {
     this.activeDialogue = null
     this.activeChain = null
     this.lastSpeech = null
+    // Проснувшийся в другом месте ни к кому не подходил.
+    this.approachTarget = null
+    this.arrivedNpcId = null
     stopActor(this.player)
   }
 
@@ -1084,9 +1110,53 @@ export class World {
     if (!cell) return false
 
     this.activeInteraction = null
+    // Идём именно разговаривать: дойдя, персонаж заговорит сам.
+    this.approachTarget = npcId
+    this.arrivedNpcId = null
+
     const from = this.grid.worldToGrid(this.player.position)
-    if (from.col === cell.col && from.row === cell.row) return true
+    if (from.col === cell.col && from.row === cell.row) {
+      this.updateApproach()
+      return true
+    }
     return setDestination(this.player, this.grid, cell)
+  }
+
+  /**
+   * Довёл ли персонаж себя до собеседника.
+   *
+   * Заказчик просил ровно этого: «если далеко — персонаж сам идёт
+   * к собеседнику и заговаривает по прибытии». Раньше он доходил
+   * и вставал молча, а разговор начинался со второго нажатия — то есть
+   * первое нажатие внешне не делало ничего.
+   *
+   * Кто и о чём заговорит, мир не решает: выбор узла и сцены — это
+   * контент, а он живёт снаружи. Мир только сообщает, что двое
+   * поравнялись, и делает это один раз.
+   */
+  private updateApproach(): void {
+    if (this.approachTarget === null) return
+    // Идём — ещё не дошли. Останавливается персонаж и по прибытии,
+    // и когда путь оборвали; разбираем оба случая одинаково.
+    if (isMoving(this.player)) return
+
+    const npc = this.npcManager.find(this.approachTarget)
+    this.approachTarget = null
+    if (npc && this.isWithinReach(npc)) this.arrivedNpcId = npc.id
+  }
+
+  /**
+   * Забирает того, к кому персонаж только что подошёл, и забывает его.
+   *
+   * Забирает, а не показывает: заговорить по прибытии надо один раз.
+   * Повторное чтение вернёт null, даже если оба всё ещё стоят рядом,
+   * — иначе отказ от разговора («промолчать и отойти») тут же
+   * начинал бы его заново.
+   */
+  takeArrival(): string | null {
+    const npcId = this.arrivedNpcId
+    this.arrivedNpcId = null
+    return npcId
   }
 
   /**
@@ -1625,6 +1695,10 @@ export class World {
 
     this.activeDialogue = null
     this.activeChain = null
+    // Намерение заговорить пути не переживает: сохранён не маршрут,
+    // а место, и подходить уже не к кому.
+    this.approachTarget = null
+    this.arrivedNpcId = null
   }
 
   /** Отмечает книгу прочитанной. Перечитывание ничего не меняет. */
@@ -1644,6 +1718,46 @@ export class World {
   /** Был ли у игрока разговор, проходящий через этот узел. */
   hasVisitedNode(nodeId: string): boolean {
     return this.visitedNodes.includes(nodeId)
+  }
+
+  /**
+   * Чей голос звучит в этом узле разговора.
+   *
+   * Карта собирается из обоих каталогов сразу: короткие реплики лежат
+   * в `dialogues`, узлы сцен — внутри цепочек. Собирается лениво и один
+   * раз: каталоги за партию не меняются.
+   */
+  private nodeSpeakers(): Map<string, string> {
+    if (this.nodeSpeakerCache) return this.nodeSpeakerCache
+    const map = new Map<string, string>()
+    for (const [id, node] of Object.entries(this.dialogues)) map.set(id, node.speakerId)
+    for (const entry of Object.values(this.chains)) {
+      for (const node of entry.chain.nodes) map.set(node.id, entry.chain.speakerId)
+    }
+    this.nodeSpeakerCache = map
+    return map
+  }
+
+  /**
+   * С кем игрок уже разговаривал.
+   *
+   * Считается по пройденным узлам, а не по отношениям, и в этом весь
+   * смысл. Разговор, ничего не сдвинувший в уважении и симпатии, — это
+   * всё равно разговор: человек, которому вы сказали «просто жду пару»,
+   * не может числиться незнакомым. Отдельного поля в сохранении не
+   * заводится: `visitedNodes` уже хранится, и вывод из него переживает
+   * загрузку сам собой.
+   */
+  private metNpcs(): Set<string> {
+    const speakers = this.nodeSpeakers()
+    const met = new Set<string>()
+    for (const nodeId of this.visitedNodes) {
+      const speakerId = speakers.get(nodeId)
+      if (!speakerId) continue
+      const npc = this.speakerOf(speakerId)
+      if (npc) met.add(npc.id)
+    }
+    return met
   }
 
   /**
@@ -1828,6 +1942,7 @@ export class World {
   }
 
   private relationshipInfo(): RelationshipInfo[] {
+    const met = this.metNpcs()
     return this.npcs.map((npc) => {
       const { affection, respect } = this.relationships.get(npc.id)
       return {
@@ -1836,6 +1951,7 @@ export class World {
         affection,
         respect,
         label: this.relationships.describeFor(npc.id),
+        met: met.has(npc.id),
       }
     })
   }
