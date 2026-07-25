@@ -2,7 +2,7 @@ import { useFrame, useThree } from '@react-three/fiber'
 import { useMemo, useState } from 'react'
 import type { FloorPlan, TileKind } from '../../sim/world/FloorPlan'
 import type { PropCatalog } from '../../sim/world/PropDefinition'
-import { PropMesh, WALL_HEIGHT } from './PropMesh'
+import { PropsLayer } from './PropsLayer'
 import { buildWallSegments } from './wallSegments'
 
 interface Cell {
@@ -16,6 +16,9 @@ interface ViewSide {
   x: 1 | -1
   z: 1 | -1
 }
+
+/** Высота стены в метрах. Отсюда же её берут срезанные перегородки. */
+export const WALL_HEIGHT = 3
 
 const FLOOR_COLOR = '#b9ab93'
 const WALL_COLOR = '#e6e1d6'
@@ -202,15 +205,7 @@ export function FloorMesh({
         </mesh>
       ))}
 
-      {plan.props.map((placement) => (
-        <PropMesh
-          key={placement.id}
-          placement={placement}
-          cellSize={size}
-          catalog={catalog}
-          onSelect={onSelectProp}
-        />
-      ))}
+      <PropsLayer plan={plan} catalog={catalog} onSelectProp={onSelectProp} />
     </group>
   )
 }

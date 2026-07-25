@@ -77,13 +77,29 @@ export const FLOOR_A2: FloorPlan = {
     { id: 'coffee-1', kind: 'coffeeMachine', col: 12, row: 6, rotation: 0, blocks: true },
     { id: 'bench-1', kind: 'bench', col: 20, row: 6, rotation: 0, blocks: true },
 
-    // Туалеты
-    { id: 'toilet-1', kind: 'toilet', col: 2, row: 10, rotation: 0, blocks: true },
-    { id: 'toilet-2', kind: 'toilet', col: 4, row: 10, rotation: 0, blocks: true },
+    /*
+     * Туалеты. Унитазы стоят у южной стены и развёрнуты на пол-оборота:
+     * бачок к стене, чаша в помещение. Пока предметы были боксами, поворот
+     * ничего не значил и они стояли посреди комнаты; с настоящей моделью
+     * это сразу видно.
+     */
+    { id: 'toilet-1', kind: 'toilet', col: 2, row: 11, rotation: Math.PI, blocks: true },
+    { id: 'toilet-2', kind: 'toilet', col: 4, row: 11, rotation: Math.PI, blocks: true },
 
-    // Лифтовый холл
-    { id: 'stairs-1', kind: 'stairs', col: 18, row: 10, rotation: 0 },
-    { id: 'elevator-1', kind: 'elevator', col: 21, row: 10, rotation: 0, blocks: true },
+    /*
+     * Лифтовый холл. Двери лифта — в западной стене холла, за которой
+     * идёт глухое ядро здания: шахте больше негде быть. Развёрнуты
+     * на четверть оборота, чтобы смотреть в холл.
+     */
+    { id: 'stairs-1', kind: 'stairs', col: 18, row: 10, rotation: 0, blocks: true },
+    {
+      id: 'elevator-1',
+      kind: 'elevator',
+      col: 17,
+      row: 10,
+      rotation: Math.PI / 2,
+      blocks: true,
+    },
   ],
 }
 

@@ -138,3 +138,93 @@ describe('корпус А, 2 этаж', () => {
     }
   })
 })
+
+/**
+ * Проверки расстановки, которые стали нужны вместе с настоящими моделями.
+ *
+ * Пока предметы были одинаковыми боксами по центру клетки, поворот ничего
+ * не значил, а «стоит у стены» и «стоит посреди комнаты» выглядели
+ * одинаково. С моделью и то и другое видно сразу, и ошибку расстановки
+ * дешевле поймать здесь, чем глазами на скриншоте.
+ */
+describe('обстановка второго этажа расставлена по-человечески', () => {
+  const grid = new NavGrid({ ...FLOOR_A2, props: [] })
+
+  /** Клетка позади предмета — та, к которой он повёрнут спиной. */
+  function behind(prop: (typeof FLOOR_A2.props)[number]): { col: number; row: number } {
+    return {
+      col: prop.col - Math.round(Math.sin(prop.rotation)),
+      row: prop.row - Math.round(Math.cos(prop.rotation)),
+    }
+  }
+
+  it('поворот каждого предмета кратен четверти оборота', () => {
+    // Планировка стоит по сторонам света. Косо повёрнутый предмет
+    // вылезет углом за свою клетку, и видимое разойдётся с проходимым.
+    for (const prop of FLOOR_A2.props) {
+      const quarters = prop.rotation / (Math.PI / 2)
+      expect(Math.abs(quarters - Math.round(quarters)), prop.id).toBeLessThan(1e-9)
+    }
+  })
+
+  it('в одной клетке не стоит двух предметов', () => {
+    const cells = FLOOR_A2.props.map((prop) => `${prop.col},${prop.row}`)
+    expect(new Set(cells).size, 'предметы налезли друг на друга').toBe(cells.length)
+  })
+
+  it('ни один предмет не стоит в дверном проёме', () => {
+    for (const prop of FLOOR_A2.props) {
+      expect(grid.tileAt({ col: prop.col, row: prop.row }), prop.id).toBe('floor')
+    }
+  })
+
+  it('ни один предмет не загораживает дверной проём', () => {
+    // Проём шириной в клетку: предмет вплотную к нему с любой стороны
+    // превращает дверь в стену.
+    const doors: { col: number; row: number }[] = []
+    for (let row = 0; row < FLOOR_A2.tiles.length; row++) {
+      const line = FLOOR_A2.tiles[row] ?? ''
+      for (let col = 0; col < line.length; col++) {
+        if (grid.tileAt({ col, row }) === 'door') doors.push({ col, row })
+      }
+    }
+    expect(doors.length, 'на этаже вообще нет дверей').toBeGreaterThan(0)
+
+    for (const prop of FLOOR_A2.props) {
+      if (!prop.blocks) continue
+      for (const door of doors) {
+        const distance = Math.abs(prop.col - door.col) + Math.abs(prop.row - door.row)
+        expect(distance, `${prop.id} стоит вплотную к проёму ${door.col},${door.row}`).toBeGreaterThan(1)
+      }
+    }
+  })
+
+  it('предмет, прижатый спиной к стене, действительно стоит у стены', () => {
+    // Прижатие живёт в каталоге (align: 'back'), а стена — в планировке.
+    // Разъедутся — и шкаф встанет спиной к пустому месту.
+    let checked = 0
+    for (const prop of FLOOR_A2.props) {
+      const model = PROP_CATALOG[prop.kind]?.model
+      if (!model || model === 'box' || model.align !== 'back') continue
+      checked++
+      const cell = behind(prop)
+      const kind = grid.tileAt(cell)
+      expect(
+        kind === 'wall' || kind === 'void',
+        `${prop.id}: за спиной клетка ${cell.col},${cell.row} — это ${kind}`,
+      ).toBe(true)
+    }
+    expect(checked, 'ни один предмет не прижат к стене — проверка ничего не проверила').toBeGreaterThan(5)
+  })
+
+  it('к каждому предмету есть куда встать, чтобы им воспользоваться', () => {
+    // То же, что и проверка достижимости, но с другой стороны: предмет,
+    // обойдённый со всех сторон другими предметами, недоступен.
+    const withProps = new NavGrid(FLOOR_A2)
+    for (const prop of FLOOR_A2.props) {
+      const approach = findApproachCell(withProps, { col: prop.col, row: prop.row })
+      expect(approach, `${prop.id}: подойти негде`).not.toBeNull()
+      expect(withProps.isWalkable(approach!), `${prop.id}: подход непроходим`).toBe(true)
+    }
+  })
+})

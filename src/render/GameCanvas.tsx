@@ -1,7 +1,9 @@
-import { OrbitControls } from '@react-three/drei'
+import { OrbitControls, useGLTF } from '@react-three/drei'
 import { Canvas, useFrame } from '@react-three/fiber'
 import { FLOOR_A2, FLOOR_A2_SPAWN } from '../content/floors/floorA2'
+import { PROP_CATALOG } from '../content/props/propCatalog'
 import { FloorMesh } from './building/FloorMesh'
+import { propModelUrls } from './building/propGroups'
 import { NpcCharacters } from './character/NpcCharacters'
 import { PlayerCharacter } from './character/PlayerCharacter'
 import { ClickToMove } from './input/ClickToMove'
@@ -15,6 +17,17 @@ import { useWorld } from './useWorld'
 const TARGET_X = (FLOOR_A2_SPAWN.col + 0.5) * FLOOR_A2.cellSize
 const TARGET_Z = (FLOOR_A2_SPAWN.row + 0.5) * FLOOR_A2.cellSize
 const CAMERA_OFFSET = { x: 6.5, y: 11, z: 7.5 }
+
+/**
+ * Предзагрузка моделей обстановки. Запускается при разборе модуля —
+ * то есть до того, как появится первый кадр, — и потому к моменту
+ * отрисовки этажа файлы обычно уже в кэше загрузчика.
+ *
+ * Без неё каждый вид предмета грузился бы в свой момент, и обстановка
+ * всплывала бы по частям: сначала парты, потом автоматы, потом лифт.
+ * Все девять файлов вместе весят меньше полутора сотен килобайт.
+ */
+for (const url of propModelUrls(PROP_CATALOG)) useGLTF.preload(url)
 
 /** Гоняет симуляцию в такт кадрам. Ничего не рисует. */
 function SimulationLoop() {
