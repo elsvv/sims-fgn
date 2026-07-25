@@ -197,12 +197,18 @@ test('сцена этажа рисуется, интерфейс на месте
 
   // Панели делят углы и не наезжают друг на друга. Проверяется геометрией,
   // а не на глаз: стоит панели подрасти, и тест это поймает.
+  //
+  // Кнопка «Меню» в списке не для полноты. Она стояла ровно на панели
+  // людей — обе просили «верх по центру», обе получили top: 16px, — и
+  // закрывала собой слово «традиций» в заголовке. Прожило это до первой
+  // проверки глазами: геометрия сторожила пять панелей из шести.
   const panelSelectors = [
     '.hud__needs',
     '.hud__schedule',
     '.hud__time',
     '.hud__skills',
     '.hud__people',
+    '.hud__gamemenu',
   ]
   const panelBoxes = await Promise.all(
     panelSelectors.map((selector) => page.locator(selector).boundingBox()),
@@ -235,8 +241,11 @@ test('сцена этажа рисуется, интерфейс на месте
   expect(box.width).toBeGreaterThan(600)
   expect(box.height).toBeGreaterThan(400)
 
+  // Кадры общего плана и человека на ходу снимает visual.spec.ts: там
+  // камера ставится нарочно, а здесь она стоит там, где её оставила
+  // проверка. Один и тот же файл, записываемый из двух мест, — это
+  // спор, чей кадр останется.
   const before = await canvas.screenshot()
-  await page.screenshot({ path: 'screenshots/01-scene.png', fullPage: true })
 
   const frame = await readFrame(page, canvas)
   const report = JSON.stringify(frame)
@@ -331,7 +340,6 @@ test('сцена этажа рисуется, интерфейс на месте
   await expect(page.locator('.hud__menu'), 'клик попал в предмет, а не в пол').toHaveCount(0)
 
   await page.waitForTimeout(3000)
-  await page.screenshot({ path: 'screenshots/02-after-click.png', fullPage: true })
 
   const after = await canvas.screenshot()
   const moved = await frameDifference(page, before, after)
