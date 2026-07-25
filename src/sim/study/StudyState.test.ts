@@ -171,4 +171,130 @@ describe('StudyState: выступления на семинарах', () => {
     study.speakAt(NEXT_MONDAY_GREEK, 'greek', 4)
     expect(study.gradebook.gradeFor('greek', 'classwork')).toBe(7)
   })
+
+  it('второе выступление на той же паре не считается вовсе', () => {
+    const study = new StudyState(CONFIG)
+    study.speakAt(FIRST_MONDAY_GREEK, 'greek', 10)
+    study.speakAt(FIRST_MONDAY_GREEK, 'greek', 2)
+    expect(study.gradebook.gradeFor('greek', 'classwork')).toBe(10)
+  })
+
+  it('повторная попытка не проникает в среднее и через много раз', () => {
+    const study = new StudyState(CONFIG)
+    study.speakAt(FIRST_MONDAY_GREEK, 'greek', 10)
+    for (let i = 0; i < 20; i++) study.speakAt(FIRST_MONDAY_GREEK, 'greek', 1)
+    expect(study.gradebook.gradeFor('greek', 'classwork')).toBe(10)
+  })
+
+  it('следующая пара после отбитой повторной попытки считается как обычно', () => {
+    const study = new StudyState(CONFIG)
+    study.speakAt(FIRST_MONDAY_GREEK, 'greek', 10)
+    study.speakAt(FIRST_MONDAY_GREEK, 'greek', 0)
+    study.speakAt(NEXT_MONDAY_GREEK, 'greek', 4)
+    expect(study.gradebook.gradeFor('greek', 'classwork')).toBe(7)
+  })
+})
+
+describe('память о выступлениях', () => {
+  it('помнит оценку за конкретную пару, а не только факт выступления', () => {
+    const study = new StudyState(CONFIG)
+    study.speakAt(FIRST_MONDAY_GREEK, 'greek', 8)
+    expect(study.gradeAt(FIRST_MONDAY_GREEK)).toBe(8)
+    expect(study.gradeAt(NEXT_MONDAY_GREEK)).toBeNull()
+  })
+
+  it('считает выступления за модуль', () => {
+    const study = new StudyState(CONFIG)
+    expect(study.spokenCount).toBe(0)
+    study.speakAt(FIRST_MONDAY_GREEK, 'greek', 8)
+    study.speakAt(NEXT_MONDAY_GREEK, 'greek', 6)
+    study.speakAt(NEXT_MONDAY_GREEK, 'greek', 10)
+    expect(study.spokenCount).toBe(2)
+  })
+
+  it('ноль за выступление — это выступление, а не молчание', () => {
+    const study = new StudyState(CONFIG)
+    study.speakAt(FIRST_MONDAY_GREEK, 'greek', 0)
+    expect(study.hasSpokenAt(FIRST_MONDAY_GREEK)).toBe(true)
+    expect(study.gradeAt(FIRST_MONDAY_GREEK)).toBe(0)
+    expect(study.spokenCount).toBe(1)
+  })
+})
+
+describe('StudyState в сохранении', () => {
+  /** Учебное состояние, в котором успели поучиться. */
+  function livedIn(): StudyState {
+    const study = new StudyState(CONFIG)
+    study.attendLesson(FIRST_MONDAY_GREEK, 'greek', 'present')
+    study.attendLesson(NEXT_MONDAY_GREEK, 'greek', 'late')
+    study.speakAt(FIRST_MONDAY_GREEK, 'greek', 8)
+    study.speakAt(NEXT_MONDAY_GREEK, 'greek', 6)
+    study.gradebook.record('logic', 'exam', 5)
+
+    const task = ESSAYS[0]!
+    study.essays.start(task)
+    study.essays.work(task.id, 120, { writingSkill: 5, stress: 20 })
+    return study
+  }
+
+  it('снимок и загрузка возвращают журналы, эссе и выступления', () => {
+    const study = livedIn()
+    const restored = StudyState.fromJSON(CONFIG, JSON.parse(JSON.stringify(study.toJSON())))
+
+    expect(restored.toJSON()).toEqual(study.toJSON())
+    expect(restored.attendance.markFor(FIRST_MONDAY_GREEK)).toBe('present')
+    expect(restored.attendance.markFor(NEXT_MONDAY_GREEK)).toBe('late')
+    expect(restored.gradeAt(FIRST_MONDAY_GREEK)).toBe(8)
+    expect(restored.spokenCount).toBe(2)
+    expect(restored.gradebook.gradeFor('logic', 'exam')).toBe(5)
+    expect(restored.essays.progressFor('greek-essay')?.effort).toBe(120)
+    expect(restored.statusFor('greek')).toEqual(study.statusFor('greek'))
+  })
+
+  it('среднее за семинары считается дальше, а не с чистого листа', () => {
+    const study = livedIn()
+    const restored = StudyState.fromJSON(CONFIG, study.toJSON())
+
+    // Оценка за работу на семинарах — среднее по всем выступлениям модуля.
+    // Если загрузка потеряет их список, третье выступление станет первым.
+    restored.speakAt(occurrenceId(14, 'g-mon'), 'greek', 10)
+    study.speakAt(occurrenceId(14, 'g-mon'), 'greek', 10)
+    expect(restored.gradebook.gradeFor('greek', 'classwork')).toBe(
+      study.gradebook.gradeFor('greek', 'classwork'),
+    )
+  })
+
+  it('загрузка заменяет прежнее состояние, а не примешивается к нему', () => {
+    const study = livedIn()
+    const fresh = new StudyState(CONFIG)
+    study.load(fresh.toJSON())
+
+    expect(study.spokenCount).toBe(0)
+    expect(study.attendance.markFor(FIRST_MONDAY_GREEK)).toBeNull()
+    expect(study.essays.progressFor('greek-essay')).toBeNull()
+    expect(study.gradebook.gradeFor('logic', 'exam')).toBeNull()
+  })
+
+  it('журналы не подменяются: ссылки на них остаются рабочими', () => {
+    // Мир и панели держат журналы по ссылке, взятой один раз. Подменённый
+    // объект остался бы у них старым, и посещаемость перестала бы меняться.
+    const study = new StudyState(CONFIG)
+    const attendance = study.attendance
+    const gradebook = study.gradebook
+
+    study.load(livedIn().toJSON())
+    expect(study.attendance).toBe(attendance)
+    expect(study.gradebook).toBe(gradebook)
+    expect(attendance.markFor(FIRST_MONDAY_GREEK)).toBe('present')
+  })
+
+  it('снимок не связан с живым состоянием', () => {
+    const study = livedIn()
+    const snapshot = study.toJSON()
+    study.attendLesson(occurrenceId(21, 'g-mon'), 'greek', 'absent')
+    study.speakAt(occurrenceId(21, 'g-mon'), 'greek', 3)
+
+    expect(Object.keys(snapshot.attendance)).toHaveLength(2)
+    expect(Object.keys(snapshot.spokenOccurrences)).toHaveLength(2)
+  })
 })

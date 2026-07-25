@@ -52,6 +52,38 @@ describe('чего не хватает для реплики', () => {
     expect(describeRequirement({ book: 'phaedo' })).toBe('нужно прочитать книгу')
   })
 
+  it('настроение называется подписью, если она известна', () => {
+    const labels = { moodlets: { praised: 'Похвалил Михайловский' } }
+    expect(describeRequirement({ moodletId: 'praised' }, labels)).toBe(
+      'нужно, чтобы ещё держалось «Похвалил Михайловский»',
+    )
+    expect(describeRequirement({ withoutMoodletId: 'praised' }, labels)).toBe(
+      'мешает «Похвалил Михайловский»',
+    )
+  })
+
+  it('настроение без подписи остаётся настроением', () => {
+    expect(describeRequirement({ moodletId: 'praised' })).toBe('нужно подходящее настроение')
+    expect(describeRequirement({ withoutMoodletId: 'elevator' })).toBe(
+      'мешает нынешнее настроение',
+    )
+  })
+
+  it('прошлый разговор называется тем, чем он был', () => {
+    const labels = {
+      conversations: { opening: 'поговорить с Мареем у раковины' },
+    }
+    expect(describeRequirement({ visitedNode: 'opening' }, labels)).toBe(
+      'нужно было раньше поговорить с Мареем у раковины',
+    )
+  })
+
+  it('прошлый разговор без описания остаётся разговором', () => {
+    expect(describeRequirement({ visitedNode: 'opening' })).toBe(
+      'нужен разговор, которого у вас ещё не было',
+    )
+  })
+
   it('несколько условий перечисляются через запятую', () => {
     const phrase = describeRequirement({
       skillId: 'logic',
@@ -69,9 +101,27 @@ describe('чего не хватает для реплики', () => {
       { respectMin: 45 },
       { affectionMin: 45 },
       { book: 'phaedo' },
+      { moodletId: 'praised' },
+      { withoutMoodletId: 'elevator' },
+      { visitedNode: 'end-brotherhood' },
     ]
     for (const requirement of requirements) {
       expect(describeRequirement(requirement)).not.toMatch(/\d/)
     }
+  })
+
+  it('каждое условие даёт ровно одну часть подсказки', () => {
+    const full: DialogueRequirement = {
+      skillId: 'logic',
+      skillMin: 3,
+      factionMin: 10,
+      respectMin: 10,
+      affectionMin: 10,
+      book: 'phaedo',
+      moodletId: 'praised',
+      withoutMoodletId: 'elevator',
+      visitedNode: 'end-brotherhood',
+    }
+    expect(requirementParts(full)).toHaveLength(8)
   })
 })

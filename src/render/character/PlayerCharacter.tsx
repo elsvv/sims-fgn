@@ -3,7 +3,7 @@ import { useRef, useState } from 'react'
 import type { Group } from 'three'
 import { isMoving } from '../../sim/actor/Actor'
 import { useWorld } from '../useWorld'
-import { createAppearance } from './CharacterAppearance'
+import { createAppearance } from '../../shared/appearance'
 import { ProceduralCharacter } from './ProceduralCharacter'
 
 /**

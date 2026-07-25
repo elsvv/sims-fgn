@@ -1,7 +1,7 @@
 import { useFrame } from '@react-three/fiber'
 import { useRef } from 'react'
 import type { Group } from 'three'
-import type { CharacterAppearance } from './CharacterAppearance'
+import type { CharacterAppearance } from '../../shared/appearance'
 
 /**
  * Процедурная модель человека из примитивов. Модель смотрит вдоль +Z.

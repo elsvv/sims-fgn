@@ -1,4 +1,17 @@
-import { MAX_GRADE, PASSING_GRADE, type Course } from './Course'
+import { MAX_GRADE, PASSING_GRADE, type AssessmentKind, type Course } from './Course'
+
+/**
+ * Элементы контроля, которые игра действительно проводит.
+ *
+ * Список нужен ровно одному месту — подведению итогов модуля. Экзамены,
+ * контрольные и домашние задания объявлены в настоящих формулах ВШЭ, но
+ * своих механик пока не имеют, и считать их несданными было бы враньём:
+ * студент не проваливал экзамен, экзамена не было. Поэтому непроведённые
+ * элементы выпадают из формулы, а веса оставшихся нормируются.
+ *
+ * Когда появится сессия, сюда добавится 'exam' — и больше ничего.
+ */
+export const HELD_ASSESSMENT_KINDS: readonly AssessmentKind[] = ['seminar']
 
 /** Арифметическое округление к ближайшему целому с зажимом в 0..10. */
 export function roundGrade(value: number): number {
@@ -76,6 +89,30 @@ export class Gradebook {
     return roundGrade(sum)
   }
 
+  /**
+   * Оценка, с которой дисциплина уходит в итог модуля.
+   *
+   * От finalGrade отличается тем, что не ждёт полной ведомости: элементы,
+   * которых игра не проводила, выпадают из формулы, а из проведённых
+   * невыставленное считается нулём. Невыставленное — это несданное эссе
+   * и семинар, на котором студент за шесть недель не сказал ни слова:
+   * и то и другое честно стоит ноль.
+   *
+   * null означает, что оценивать пока не по чему: ни один элемент контроля
+   * этой дисциплины в игре ещё не проводится.
+   */
+  settledGrade(course: Course, heldKinds: readonly AssessmentKind[]): number | null {
+    let sum = 0
+    let weight = 0
+    for (const assessment of course.assessments) {
+      if (!heldKinds.includes(assessment.kind)) continue
+      sum += (this.gradeFor(course.id, assessment.id) ?? 0) * assessment.weight
+      weight += assessment.weight
+    }
+    if (weight === 0) return null
+    return roundGrade(sum / weight)
+  }
+
   isPassed(course: Course): boolean {
     const final = this.finalGrade(course)
     if (final === null) return false
@@ -94,9 +131,20 @@ export class Gradebook {
     return JSON.parse(JSON.stringify(this.records)) as GradeRecords
   }
 
+  /**
+   * Возвращает состояние на место, в уже существующий журнал.
+   *
+   * Нужно там, где журнал заменить нельзя: учебное состояние держит его
+   * своим полем и раздаёт наружу, а подменять объект под теми, кто уже
+   * взял на него ссылку, — верный способ разъехаться с самим собой.
+   */
+  load(records: GradeRecords): void {
+    this.records = JSON.parse(JSON.stringify(records)) as GradeRecords
+  }
+
   static fromJSON(records: GradeRecords): Gradebook {
     const book = new Gradebook()
-    book.records = JSON.parse(JSON.stringify(records)) as GradeRecords
+    book.load(records)
     return book
   }
 }

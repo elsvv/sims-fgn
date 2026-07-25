@@ -1,7 +1,4 @@
-import {
-  createAppearance,
-  type CharacterAppearance,
-} from '../../render/character/CharacterAppearance'
+import { createAppearance, type CharacterAppearance } from '../../shared/appearance'
 
 /**
  * Внешность шестерых преподавателей.

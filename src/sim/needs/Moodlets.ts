@@ -118,9 +118,20 @@ export class MoodletList {
     return this.items.map((item) => ({ ...item }))
   }
 
+  /**
+   * Возвращает состояние на место, в уже существующий список.
+   *
+   * Не через add: тот сливает одинаковые записи и берёт больший срок,
+   * а загрузка сохранения обязана воспроизвести список ровно таким,
+   * каким он был, — со всеми сроками, какими они были.
+   */
+  load(items: readonly Moodlet[]): void {
+    this.items = items.map((item) => ({ ...item }))
+  }
+
   static fromJSON(items: Moodlet[]): MoodletList {
     const list = new MoodletList()
-    list.items = items.map((item) => ({ ...item }))
+    list.load(items)
     return list
   }
 }

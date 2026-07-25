@@ -25,6 +25,8 @@ const SCHOLAR: DialogueContext = {
   faction: 30,
   relationship: { affection: 0, respect: 0 },
   readBooks: [],
+  moodlets: [],
+  visitedNodes: [],
   day: 9,
 }
 

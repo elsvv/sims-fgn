@@ -1,4 +1,4 @@
-import type { GridPos } from '../types'
+import type { GridPos, Vec2 } from '../types'
 import type { NavGrid } from '../world/NavGrid'
 
 const APPROACH_OFFSETS: readonly GridPos[] = [
@@ -41,4 +41,30 @@ export function findAdjacentCell(
     fallback ??= candidate
   }
   return fallback
+}
+
+/**
+ * На каком расстоянии друг от друга можно заговорить, в метрах.
+ *
+ * Одного помещения мало: коридор второго этажа — двадцать два метра, и
+ * «мы в одном коридоре» ничего не говорит о том, слышим ли мы друг друга.
+ * Три метра — это расстояние, на котором в помещении разговаривают, не
+ * повышая голоса, и заодно запас на то, что собеседник переступил с ноги
+ * на ногу, пока игрок нажимал.
+ *
+ * Стоять ближе игрок и не сможет: подойдя через commandApproachNpc, он
+ * встаёт в соседнюю клетку, то есть примерно в метре.
+ */
+export const TALK_RANGE_METRES = 3
+
+/** Достаточно ли близко стоят двое, чтобы разговаривать. */
+export function isWithinTalkRange(
+  a: Vec2,
+  b: Vec2,
+  range: number = TALK_RANGE_METRES,
+): boolean {
+  const dx = a.x - b.x
+  const dz = a.z - b.z
+  // Сравниваем квадраты: корень здесь не нужен, а вызывают это каждый снимок.
+  return dx * dx + dz * dz <= range * range
 }

@@ -14,6 +14,8 @@ const CONTEXT: DialogueContext = {
   faction: 40,
   relationship: { affection: 10, respect: 30 },
   readBooks: ['phaedo'],
+  moodlets: [],
+  visitedNodes: [],
   day: 12,
 }
 
@@ -57,6 +59,61 @@ describe('условия доступности реплики', () => {
   })
 })
 
+describe('условия по настроению', () => {
+  const PRAISED: DialogueContext = { ...CONTEXT, moodlets: ['praised', 'elevator'] }
+
+  it('требование действующего модификатора', () => {
+    expect(isAvailable({ moodletId: 'praised' }, PRAISED)).toBe(true)
+    expect(isAvailable({ moodletId: 'humiliated' }, PRAISED)).toBe(false)
+  })
+
+  it('без единого модификатора такая реплика закрыта', () => {
+    expect(isAvailable({ moodletId: 'praised' }, CONTEXT)).toBe(false)
+  })
+
+  it('требование отсутствия модификатора', () => {
+    expect(isAvailable({ withoutMoodletId: 'elevator' }, PRAISED)).toBe(false)
+    expect(isAvailable({ withoutMoodletId: 'humiliated' }, PRAISED)).toBe(true)
+    expect(isAvailable({ withoutMoodletId: 'elevator' }, CONTEXT)).toBe(true)
+  })
+
+  it('наличие и отсутствие — разные условия и работают вместе', () => {
+    expect(isAvailable({ moodletId: 'praised', withoutMoodletId: 'elevator' }, PRAISED)).toBe(
+      false,
+    )
+    expect(isAvailable({ moodletId: 'praised', withoutMoodletId: 'humiliated' }, PRAISED)).toBe(
+      true,
+    )
+  })
+})
+
+describe('условия по истории разговоров', () => {
+  const REMEMBERS: DialogueContext = {
+    ...CONTEXT,
+    visitedNodes: ['marey-restroom-opening', 'end-brotherhood'],
+  }
+
+  it('требование пройденного узла', () => {
+    expect(isAvailable({ visitedNode: 'marey-restroom-opening' }, REMEMBERS)).toBe(true)
+    expect(isAvailable({ visitedNode: 'end-duel' }, REMEMBERS)).toBe(false)
+  })
+
+  it('тому, у кого этого разговора не было, реплика закрыта', () => {
+    expect(isAvailable({ visitedNode: 'marey-restroom-opening' }, CONTEXT)).toBe(false)
+  })
+
+  it('память о конце разговора отличает один исход от другого', () => {
+    expect(isAvailable({ visitedNode: 'end-brotherhood' }, REMEMBERS)).toBe(true)
+    expect(isAvailable({ visitedNode: 'end-judgement' }, REMEMBERS)).toBe(false)
+  })
+
+  it('складывается с остальными условиями по И', () => {
+    const requirement = { visitedNode: 'end-brotherhood', skillId: 'greek', skillMin: 5 }
+    expect(isAvailable(requirement, REMEMBERS)).toBe(true)
+    expect(isAvailable({ ...requirement, skillMin: 9 }, REMEMBERS)).toBe(false)
+  })
+})
+
 const NODE: DialogueNode = {
   id: 'test',
   speakerId: 'marey',
@@ -91,6 +148,8 @@ describe('доступные реплики', () => {
       skills: {},
       relationship: { affection: -50, respect: -50 },
       readBooks: [],
+      moodlets: [],
+      visitedNodes: [],
     }
     expect(availableOptions(NODE, poor).map((o) => o.id)).toEqual(['safe'])
   })

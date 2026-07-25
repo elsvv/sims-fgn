@@ -17,6 +17,8 @@ const CONTEXT: DialogueContext = {
   faction: 20,
   relationship: { affection: 0, respect: 0 },
   readBooks: [],
+  moodlets: [],
+  visitedNodes: [],
   day: 4,
 }
 

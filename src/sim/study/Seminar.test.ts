@@ -428,6 +428,8 @@ function dialogueContext(skills: Partial<Skills> = {}, faction = 0): DialogueCon
     faction,
     relationship: createRelationship(),
     readBooks: [],
+    moodlets: [],
+    visitedNodes: [],
     day: 1,
   }
 }

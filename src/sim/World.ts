@@ -6,8 +6,43 @@ import {
   stopActor,
   type Actor,
 } from './actor/Actor'
+import {
+  isPastCurfew,
+  livingDay,
+  minutesUntilCurfew,
+  minutesUntilMorning,
+} from './daily/DayCycle'
+import {
+  summarizeDay,
+  type DayFacts,
+  type DayLessonFact,
+  type DayPersonFact,
+  type DaySkillFact,
+  type DaySummary,
+} from './daily/DaySummary'
+import {
+  COLLAPSE_SPOT,
+  sleepThroughNight,
+  type SleepOutcome,
+  type SleepSpot,
+  type SleepSpotCatalog,
+} from './daily/Sleep'
+import {
+  describeWeekend,
+  findWeekendOption,
+  type WeekendOption,
+  type WeekendReport,
+} from './daily/Weekend'
 import type { ConsequenceChange, ConsequenceReport, DialogueTone } from './dialogue/Consequences'
 import { TONE_LABELS, toneHint } from './dialogue/Consequences'
+import {
+  buildEpilogue,
+  type EpilogueCourseFact,
+  type EpilogueFacts,
+  type EpiloguePersonFact,
+  type EpilogueReport,
+  type EpilogueRule,
+} from './epilogue/Epilogue'
 import type { DialogueCatalog, DialogueContext } from './dialogue/Dialogue'
 import { isAvailable } from './dialogue/Dialogue'
 import {
@@ -17,8 +52,12 @@ import {
   type ChainNode,
   type ConversationOutcome,
 } from './dialogue/DialogueChain'
-import { describeRequirement } from './dialogue/Requirements'
-import { findAdjacentCell, findApproachCell } from './interaction/approach'
+import { describeRequirement, type RequirementLabels } from './dialogue/Requirements'
+import {
+  findAdjacentCell,
+  findApproachCell,
+  isWithinTalkRange,
+} from './interaction/approach'
 import {
   MoodletList,
   moodletFrom,
@@ -37,10 +76,12 @@ import {
   createSkills,
   gainSkill,
   isSkillId,
+  SKILL_IDS,
   SKILL_LABELS,
   type SkillId,
   type Skills,
 } from './player/Skills'
+import type { DayBaselineState, WorldState } from './save/SaveGame'
 import {
   openDialogue,
   resolveEffects,
@@ -48,11 +89,17 @@ import {
   type ActiveDialogue,
 } from './social/Conversation'
 import { affinity, clampFaction, factionLabel } from './social/Faction'
-import { RelationshipMap } from './social/Relationship'
+import { RelationshipMap, type Relationship } from './social/Relationship'
 import type { Teacher, TeacherCatalog } from './social/Teacher'
+import type { AttendanceCounts } from './study/Attendance'
 import { decideAttendance } from './study/AttendanceTracker'
+import { dayKind, describeDay } from './study/Calendar'
+import { PASSING_GRADE } from './study/Course'
+import { HELD_ASSESSMENT_KINDS } from './study/Gradebook'
+import { rankAmong } from './study/Rating'
 import {
   lessonAt,
+  lessonsOnDay,
   nextLessonOnDay,
   occurrenceId,
   periodOf,
@@ -68,7 +115,7 @@ import {
   type SeminarRefusal,
 } from './study/Seminar'
 import type { StudyState } from './study/StudyState'
-import { GameClock, type Speed } from './time/GameClock'
+import { GameClock, MINUTES_PER_DAY, type Speed } from './time/GameClock'
 import type { GridPos, Vec2 } from './types'
 import type { FloorPlan } from './world/FloorPlan'
 import { NavGrid } from './world/NavGrid'
@@ -80,6 +127,31 @@ import type { PropCatalog } from './world/PropDefinition'
  */
 const MAX_TICK_SECONDS = 0.25
 
+/** Сколько минут занимает «улечься». Сам сон начинается после этого. */
+const SLEEP_SETTLE_MINUTES = 5
+
+/** Идентификатор действия «лечь спать»: своего описания в каталоге предметов у него нет. */
+const SLEEP_INTERACTION_ID = 'sleep'
+
+/**
+ * Ниже этого прироста навык за день не считается изменившимся.
+ *
+ * Иначе итоги дня сообщали бы о трёх сотых красноречия, полученных за одно
+ * слово в коридоре, — а это не событие дня, это шум.
+ */
+const SKILL_CHANGE_THRESHOLD = 0.05
+
+/**
+ * Глубокая копия простых данных: рассказ о дне, эссе, слепок утра.
+ *
+ * Нужна и при снятии сохранения, и при загрузке, и по одной причине:
+ * состояние в файле и состояние в мире не должны оказаться одним и тем же
+ * объектом. Иначе сохранение продолжало бы меняться вместе с игрой.
+ */
+function cloneData<T>(value: T): T {
+  return value === null ? value : (JSON.parse(JSON.stringify(value)) as T)
+}
+
 export interface ActiveInteraction {
   propId: string
   interactionId: string
@@ -89,6 +161,11 @@ export interface ActiveInteraction {
   needDelta: Partial<Needs>
   /** Какой модификатор настроения повесить по завершении. null — никакого. */
   moodletId: string | null
+  /**
+   * Вид предмета, на котором собираются спать. null — обычное действие.
+   * По завершении такого действия день кончается: см. advanceInteraction.
+   */
+  sleepSpotKind: string | null
 }
 
 /** Действующий модификатор настроения в снимке состояния. */
@@ -267,6 +344,60 @@ export interface SocialConfig {
 const EMPTY_SOCIAL: SocialConfig = { teachers: {}, dialogues: {} }
 
 /**
+ * Данные суточного цикла: где спят, чем занимают выходной, чем кончается
+ * модуль. Всё необязательно — мир без них просто никогда не кончается,
+ * и так собраны тесты движения, нужд и разговоров.
+ */
+export interface DailyConfig {
+  /** Места для сна по видам предметов. Ключ — kind предмета. */
+  sleepSpots?: SleepSpotCatalog
+  weekendOptions?: readonly WeekendOption[]
+  epilogueRules?: readonly EpilogueRule[]
+  /** Средние баллы однокурсников: по ним считается место в рейтинге. */
+  cohort?: readonly number[]
+}
+
+const EMPTY_DAILY: DailyConfig = {}
+
+/** Что за экран стоит между игроком и миром. */
+export type DayScreenKind = 'summary' | 'weekend' | 'epilogue'
+
+/** Вариант выходного глазами игрока: заголовок и что это значит. */
+export interface WeekendOptionInfo {
+  id: string
+  title: string
+  description: string
+}
+
+/**
+ * Экран, который прерывает игру: итоги дня, карточка воскресенья, эпилог.
+ *
+ * Пока он есть, время стоит и мир не тикает — игрок сейчас не в мире.
+ */
+export interface DayScreenInfo {
+  kind: DayScreenKind
+  /** Итоги прожитого дня. */
+  summary: DaySummary | null
+  /** Варианты выходного. Пусто, если выбор уже сделан. */
+  weekendOptions: WeekendOptionInfo[]
+  /** Чем кончился выходной. */
+  weekendReport: WeekendReport | null
+  epilogue: EpilogueReport | null
+}
+
+/**
+ * Состояние на утро текущего дня.
+ *
+ * Итоги дня — это разница между утром и вечером, и снимать её надо
+ * с чего-то: журнал приращений пришлось бы вести на каждой реплике
+ * и в каждом выступлении, а слепок стоит один раз в сутки.
+ *
+ * Тип взят у сохранения: слепок утра уезжает в файл целиком, и два
+ * описания одного и того же рано или поздно разъехались бы.
+ */
+type DayBaseline = DayBaselineState
+
+/**
  * Идущий многошаговый разговор.
  *
  * Контекст доступности реплик снят один раз, в момент начала: иначе
@@ -329,6 +460,10 @@ export interface WorldSnapshot {
   canSpeakAtSeminar: boolean
   /** Семинар, на котором игрок сидит, или null. */
   seminar: SeminarInfo | null
+  /** Сколько игровых минут осталось до того, как персонаж вырубится сам. */
+  minutesUntilCurfew: number
+  /** Экран, прерывающий игру: итоги дня, воскресенье, эпилог. */
+  dayScreen: DayScreenInfo | null
 }
 
 /**
@@ -356,6 +491,12 @@ export class World {
   readonly chains: ChainCatalog
   /** Отношения со всеми, с кем игрок имел дело. Ключ — идентификатор NPC. */
   readonly relationships = new RelationshipMap()
+  /**
+   * Названия для подсказок о закрытых репликах. Подписи модификаторов мир
+   * знает сам — они лежат в его же каталоге, — и тогда вместо общего
+   * «нужно подходящее настроение» игрок читает, чего именно ждут.
+   */
+  private readonly requirementLabels: RequirementLabels
   player: Actor
   needs: Needs = createNeeds()
   skills: Skills = createSkills()
@@ -373,11 +514,46 @@ export class World {
   /** Сцены, которые уже сыграны: одноразовые второй раз не предлагаются. */
   playedChains: string[] = []
   /**
+   * Узлы разговоров, через которые игрок прошёл, — память о прошлых
+   * разговорах. Из неё разговоры узнают друг о друге: реплика может
+   * потребовать, чтобы у этих двоих уже был определённый разговор,
+   * и тогда встреча в коридоре начинается не с нуля.
+   *
+   * Хранятся идентификаторы узлов, а не сцен: важно не только то, что
+   * разговор был, но и чем он кончился, — а конец разговора это тоже узел.
+   */
+  visitedNodes: string[] = []
+  /**
    * Последнее выступление на семинаре. Живёт до конца той пары, на которой
    * состоялось: панель показывает ответ преподавателя, пока игрок сидит
    * в аудитории, и не тащит его в следующий день.
    */
   lastSpeech: SeminarSpeechInfo | null = null
+
+  /** Места, где можно лечь спать. Ключ — вид предмета. */
+  readonly sleepSpots: SleepSpotCatalog
+  /** Как можно провести воскресенье. Пусто — воскресенье отыгрывается как будни. */
+  readonly weekendOptions: readonly WeekendOption[]
+  /** Концовки модуля. Пусто — эпилог обойдётся одной общей. */
+  readonly epilogueRules: readonly EpilogueRule[]
+  /** Средние баллы однокурсников для рейтинга. */
+  readonly cohort: readonly number[]
+
+  /** Итоги прожитого дня, ждущие прочтения. */
+  daySummary: DaySummary | null = null
+  /** Карточка воскресенья ждёт выбора. */
+  weekendPending = false
+  /** Чем кончился выходной. */
+  weekendReport: WeekendReport | null = null
+  /** Эпилог. Появившись, не исчезает: модуль кончился. */
+  epilogue: EpilogueReport | null = null
+
+  /** Слепок утра: с ним сравниваются вечерние итоги. */
+  private dayBaseline: DayBaseline
+  /** Сумма стресса, взвешенная по прожитым минутам. Нужна эпилогу. */
+  private stressSum = 0
+  /** Сколько игровых минут персонаж провёл бодрствуя. */
+  private awakeMinutes = 0
 
   constructor(
     plan: FloorPlan,
@@ -387,6 +563,7 @@ export class World {
     moodletCatalog: MoodletCatalog = {},
     npcs: readonly NpcSpec[] = [],
     social: SocialConfig = EMPTY_SOCIAL,
+    daily: DailyConfig = EMPTY_DAILY,
   ) {
     this.plan = plan
     this.catalog = catalog
@@ -395,9 +572,18 @@ export class World {
     this.teachers = social.teachers
     this.dialogues = social.dialogues
     this.chains = social.chains ?? {}
+    this.sleepSpots = daily.sleepSpots ?? {}
+    this.weekendOptions = daily.weekendOptions ?? []
+    this.epilogueRules = daily.epilogueRules ?? []
+    this.cohort = daily.cohort ?? []
     this.grid = new NavGrid(plan)
     this.player = createActor('player', this.grid.gridToWorld(spawn))
     this.npcManager = new NpcManager(npcs, this.grid, study?.config.schedule ?? [])
+    this.dayBaseline = this.captureDayBaseline()
+
+    const moodletLabels: Record<string, string> = {}
+    for (const [id, spec] of Object.entries(moodletCatalog)) moodletLabels[id] = spec.label
+    this.requirementLabels = { moodlets: moodletLabels }
   }
 
   /** Живые NPC мира. Рендер читает их напрямую, чтобы не ждать снимка. */
@@ -431,17 +617,28 @@ export class World {
 
   /** @param realDeltaSeconds время, прошедшее с прошлого кадра. */
   tick(realDeltaSeconds: number): void {
+    // Пока на экране итоги дня, карточка воскресенья или эпилог, время стоит.
+    // Это не пауза: игрок сейчас не в мире, и мир его не ждёт, а отсутствует.
+    if (this.dayScreenKind() !== null) return
+
     const delta = Math.min(realDeltaSeconds, MAX_TICK_SECONDS)
     const gameMinutes = this.clock.advance(delta)
     if (gameMinutes === 0) return
 
     const { day, minutes } = this.clock.time
     this.needs = decayNeeds(this.needs, gameMinutes)
+    this.stressSum += this.needs.stress * gameMinutes
+    this.awakeMinutes += gameMinutes
     this.moodlets.prune(this.clock.totalMinutes)
     stepActor(this.player, this.grid, delta * this.clock.speed)
     this.npcManager.tick(this.grid, delta * this.clock.speed, day, minutes)
     this.advanceInteraction(gameMinutes)
     this.updateAttendance()
+
+    // Дизайн-документ, §3: после двух ночи персонаж вырубается где стоит.
+    // Проверка идёт последней: пусть последняя минута перед отбоем
+    // достанется игроку целиком.
+    if (isPastCurfew(this.clock.time.minutes)) this.beginSleep(COLLAPSE_SPOT)
   }
 
   commandMoveTo(target: GridPos): boolean {
@@ -477,8 +674,350 @@ export class World {
       remainingMinutes: interaction.durationMinutes,
       needDelta: interaction.needDelta,
       moodletId: interaction.moodletId ?? null,
+      sleepSpotKind: null,
     }
     return true
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* Суточный цикл: сон, итоги дня, воскресенье, эпилог                 */
+  /* ---------------------------------------------------------------- */
+
+  /**
+   * Можно ли спать на этом предмете и как это будет выглядеть.
+   *
+   * Кровати в общаге ещё нет, и это ровно та причина, по которой места
+   * для сна описаны данными: когда общага появится, кровать станет одной
+   * записью в каталоге контента, и здесь не изменится ни строчки.
+   */
+  sleepSpotFor(propId: string): SleepSpot | null {
+    const placement = this.plan.props.find((p) => p.id === propId)
+    if (!placement) return null
+    return this.sleepSpots[placement.kind] ?? null
+  }
+
+  /**
+   * Отправляет персонажа спать: он идёт к месту, укладывается — и день
+   * кончается. Возвращает false, если на этом предмете не спят или к нему
+   * не подойти.
+   */
+  commandSleep(propId: string): boolean {
+    const placement = this.plan.props.find((p) => p.id === propId)
+    const spot = this.sleepSpotFor(propId)
+    if (!placement || !spot) return false
+
+    const approach = findApproachCell(this.grid, { col: placement.col, row: placement.row })
+    if (!approach) return false
+
+    // Как и у обычного действия: если персонаж уже стоит в клетке подхода,
+    // setDestination вернёт false, и это не ошибка, а признак того,
+    // что идти никуда не надо.
+    setDestination(this.player, this.grid, approach)
+    this.activeDialogue = null
+    this.activeChain = null
+    this.activeInteraction = {
+      propId,
+      interactionId: SLEEP_INTERACTION_ID,
+      label: spot.actionLabel,
+      remainingMinutes: SLEEP_SETTLE_MINUTES,
+      needDelta: {},
+      moodletId: null,
+      sleepSpotKind: placement.kind,
+    }
+    return true
+  }
+
+  /**
+   * Проводит ночь.
+   *
+   * Порядок здесь важен и весь состоит из «иначе»: сначала закрывается
+   * посещаемость прожитого дня — потом время уходит вперёд, и о прогулах
+   * узнать будет неоткуда. Потом применяются нужды, потом переводятся часы,
+   * и только потом вешается утренний модификатор: повешенный до перевода
+   * часов, он бы наполовину истёк ещё во сне.
+   */
+  private beginSleep(spot: SleepSpot): void {
+    const { day, minutes } = this.clock.time
+    const finishedDay = livingDay(day, minutes)
+
+    this.closeAttendance(finishedDay)
+
+    const outcome = sleepThroughNight(spot, minutes, minutesUntilMorning(minutes))
+    this.applyNeeds(outcome.needDelta)
+    this.clock.jump(outcome.minutes)
+    this.moodlets.prune(this.clock.totalMinutes)
+    if (outcome.moodletId) this.addMoodletById(outcome.moodletId)
+
+    this.daySummary = summarizeDay(this.dayFacts(finishedDay, outcome))
+    this.startNewDay()
+  }
+
+  /**
+   * Проставляет прогулы за прожитый день.
+   *
+   * Обычно это делает тик: пара кончилась, отметки нет — прогул. Но лечь
+   * спать можно и в два часа дня, и тогда вечерние пары останутся без
+   * отметки навсегда. Здесь день закрывается принудительно, на его
+   * последней минуте.
+   */
+  private closeAttendance(day: number): void {
+    const study = this.study
+    if (!study) return
+
+    const decisions = decideAttendance({
+      schedule: study.config.schedule,
+      day,
+      minutes: MINUTES_PER_DAY,
+      room: null,
+      markFor: (id) => study.attendance.markFor(id),
+    })
+    for (const decision of decisions) {
+      study.attendLesson(decision.occurrenceId, decision.courseId, decision.mark)
+    }
+  }
+
+  /** Начинает новые сутки: слепок утра снят, вчерашние окна закрыты. */
+  private startNewDay(): void {
+    this.dayBaseline = this.captureDayBaseline()
+    this.activeInteraction = null
+    this.activeDialogue = null
+    this.activeChain = null
+    this.lastSpeech = null
+    stopActor(this.player)
+  }
+
+  private captureDayBaseline(): DayBaseline {
+    const relationships: Record<string, Relationship> = {}
+    for (const npc of this.npcs) relationships[npc.id] = { ...this.relationships.get(npc.id) }
+    return { skills: { ...this.skills }, relationships, faction: this.faction }
+  }
+
+  /** Собирает всё, что случилось за день, для рассказа о нём. */
+  private dayFacts(day: number, sleep: SleepOutcome): DayFacts {
+    const study = this.study
+    const lessons: DayLessonFact[] = []
+    const submittedEssays: string[] = []
+
+    if (study) {
+      for (const lesson of lessonsOnDay(study.config.schedule, day)) {
+        const occurrence = occurrenceId(day, lesson.id)
+        lessons.push({
+          courseId: lesson.courseId,
+          courseName: study.config.courses[lesson.courseId]?.short ?? lesson.courseId,
+          kind: lesson.kind,
+          mark: study.attendance.markFor(occurrence),
+          grade: study.gradeAt(occurrence),
+        })
+      }
+      for (const task of study.config.essays) {
+        if (study.essays.progressFor(task.id)?.submittedDay === day) {
+          submittedEssays.push(task.title)
+        }
+      }
+    }
+
+    const people: DayPersonFact[] = []
+    for (const npc of this.npcs) {
+      const before = this.dayBaseline.relationships[npc.id] ?? { affection: 0, respect: 0 }
+      const now = this.relationships.get(npc.id)
+      const respectDelta = now.respect - before.respect
+      const affectionDelta = now.affection - before.affection
+      if (respectDelta === 0 && affectionDelta === 0) continue
+      people.push({ name: this.personName(npc.teacherId) ?? npc.id, respectDelta, affectionDelta })
+    }
+
+    const skills: DaySkillFact[] = []
+    for (const id of SKILL_IDS) {
+      const delta = this.skills[id] - this.dayBaseline.skills[id]
+      if (Math.abs(delta) < SKILL_CHANGE_THRESHOLD) continue
+      skills.push({ label: SKILL_LABELS[id], delta })
+    }
+
+    return {
+      day,
+      dayLabel: describeDay(day),
+      lessons,
+      people,
+      skills,
+      factionDelta: this.faction - this.dayBaseline.faction,
+      submittedEssays,
+      sleep,
+    }
+  }
+
+  /** Фамилия преподавателя для списков. null — за этим NPC никого нет. */
+  private personName(teacherId: string | null): string | null {
+    if (!teacherId) return null
+    return this.teachers[teacherId]?.short ?? teacherId
+  }
+
+  /** Убирает итоги дня и открывает то, что за ними: воскресенье или эпилог. */
+  dismissDaySummary(): void {
+    if (!this.daySummary) return
+    this.daySummary = null
+    this.openScheduledScreen()
+  }
+
+  /**
+   * Что показывать вместо наступившего дня.
+   *
+   * Воскресенье в 3D не отыгрывается (дизайн-документ, §3), а за концом
+   * календаря идёт эпилог. Обычный будний день не показывает ничего —
+   * игрок просто просыпается в мире.
+   */
+  private openScheduledScreen(): void {
+    const kind = dayKind(this.clock.time.day)
+    if (kind === 'over') {
+      this.epilogue = buildEpilogue(this.epilogueFacts(), this.epilogueRules)
+      return
+    }
+    if (kind === 'weekend' && this.weekendOptions.length > 0) this.weekendPending = true
+  }
+
+  /**
+   * Применяет выбор выходного.
+   *
+   * Числа в варианте — это итог целых суток, а не часа, поэтому обычный
+   * износ нужд за прокрученное воскресенье не начисляется: он уже учтён
+   * в самих числах карточки.
+   */
+  chooseWeekendOption(optionId: string): WeekendReport | null {
+    if (!this.weekendPending) return null
+
+    const option = findWeekendOption(this.weekendOptions, optionId)
+    if (!option) return null
+
+    this.applyNeeds(option.needDelta)
+    for (const gain of option.skills ?? []) this.trainSkill(gain.id, gain.amount)
+    if (option.factionShift) this.faction = clampFaction(this.faction + option.factionShift)
+    if (option.moodletId) this.addMoodletById(option.moodletId)
+
+    const notes = this.workOnEssay(option.essayMinutes ?? 0)
+    this.weekendPending = false
+    this.weekendReport = describeWeekend(option, SKILL_LABELS, notes)
+    return this.weekendReport
+  }
+
+  /** Вкладывает время выходного в ближайшее несданное эссе. */
+  private workOnEssay(minutes: number): string[] {
+    const study = this.study
+    if (!study || minutes <= 0) return []
+
+    const task = study.pendingEssays(this.clock.time.day)[0]
+    if (!task) return []
+
+    study.essays.start(task)
+    study.essays.work(task.id, minutes, {
+      writingSkill: this.skills.academicWriting,
+      stress: this.needs.stress,
+    })
+    return [`Эссе «${task.title}» продвинулось.`]
+  }
+
+  /** Закрывает рассказ о выходном и прокручивает воскресенье: наступает понедельник. */
+  dismissWeekendReport(): void {
+    if (!this.weekendReport) return
+    this.weekendReport = null
+    this.clock.jump(minutesUntilMorning(this.clock.time.minutes))
+    this.moodlets.prune(this.clock.totalMinutes)
+    this.startNewDay()
+    this.openScheduledScreen()
+  }
+
+  /** Средний стресс за модуль, 0..100. Считается по прожитому времени. */
+  get averageStress(): number {
+    return this.awakeMinutes > 0 ? this.stressSum / this.awakeMinutes : this.needs.stress
+  }
+
+  /**
+   * Всё, чем модуль кончился.
+   *
+   * Оценка выставляется по тем элементам контроля, которые игра успела
+   * провести (см. HELD_ASSESSMENT_KINDS): экзаменов пока нет, и считать
+   * их несданными было бы враньём. Всё, что игра проводила, но чего игрок
+   * не сделал, честно стоит ноль.
+   */
+  epilogueFacts(): EpilogueFacts {
+    const study = this.study
+    const courses: EpilogueCourseFact[] = []
+    const debts: string[] = []
+    const attendance: AttendanceCounts = { present: 0, late: 0, absent: 0 }
+    let gradeSum = 0
+    let graded = 0
+
+    if (study) {
+      for (const course of Object.values(study.config.courses)) {
+        const grade = study.gradebook.settledGrade(course, HELD_ASSESSMENT_KINDS)
+        const passed = grade !== null && grade >= PASSING_GRADE
+        courses.push({
+          id: course.id,
+          title: course.title,
+          short: course.short,
+          teacherName: this.teachers[course.teacherId]?.name ?? null,
+          grade,
+          passed,
+        })
+        if (grade !== null) {
+          gradeSum += grade
+          graded += 1
+          if (!passed) debts.push(course.short)
+        }
+
+        const counts = study.attendance.countByCourse(course.id)
+        attendance.present += counts.present
+        attendance.late += counts.late
+        attendance.absent += counts.absent
+      }
+    }
+
+    const gpa = graded > 0 ? gradeSum / graded : null
+    const people: EpiloguePersonFact[] = this.npcs.map((npc) => {
+      const { affection, respect } = this.relationships.get(npc.id)
+      const teacher = npc.teacherId ? this.teachers[npc.teacherId] : undefined
+      return {
+        id: teacher?.id ?? npc.id,
+        name: teacher?.name ?? npc.id,
+        respect,
+        affection,
+        level: this.relationships.describeFor(npc.id),
+      }
+    })
+
+    return {
+      courses,
+      gpa,
+      debts,
+      rating: gpa !== null && this.cohort.length > 0 ? rankAmong(gpa, this.cohort) : null,
+      people,
+      faction: this.faction,
+      averageStress: this.averageStress,
+      skills: this.skills,
+      booksRead: this.readBooks.length,
+      attendance,
+      seminarsSpoken: study?.spokenCount ?? 0,
+    }
+  }
+
+  /** Экран, прерывающий игру, или null. */
+  private dayScreenKind(): DayScreenKind | null {
+    if (this.epilogue) return 'epilogue'
+    if (this.daySummary) return 'summary'
+    if (this.weekendPending || this.weekendReport) return 'weekend'
+    return null
+  }
+
+  private dayScreenInfo(): DayScreenInfo | null {
+    const kind = this.dayScreenKind()
+    if (kind === null) return null
+    return {
+      kind,
+      summary: this.daySummary,
+      weekendOptions: this.weekendPending
+        ? this.weekendOptions.map(({ id, title, description }) => ({ id, title, description }))
+        : [],
+      weekendReport: this.weekendReport,
+      epilogue: this.epilogue,
+    }
   }
 
   /**
@@ -511,8 +1050,15 @@ export class World {
    * Начинает разговор по узлу каталога.
    *
    * Возвращает false, если узла нет, собеседника нет на этаже или игрок
-   * стоит не там. Условие соседства — общее помещение: разговаривать через
-   * стену нельзя, а гоняться за преподавателем по всему коридору незачем.
+   * стоит не там. «Не там» — это два условия сразу, и одного мало.
+   * Общее помещение: разговаривать через стену нельзя. И расстояние:
+   * коридор второго этажа длиной двадцать два метра — тоже одно помещение,
+   * а окликать человека с другого его конца и получать в ответ разговор
+   * вполголоса невозможно.
+   *
+   * Отказ не тупик: интерфейс на него отвечает тем, что персонаж идёт
+   * к собеседнику сам (commandApproachNpc), и разговор начинается,
+   * когда он дошёл.
    */
   startDialogue(nodeId: string): boolean {
     // Посреди сцены короткий обмен репликами не начинают: два окна
@@ -525,15 +1071,17 @@ export class World {
 
     const npc = this.speakerOf(node.speakerId)
     if (!npc) return false
-
-    const room = this.currentRoom
-    if (room === null || npcRoom(this.grid, npc) !== room) return false
+    if (!this.isWithinReach(npc)) return false
 
     // Заговорив, персонаж останавливается: разговаривать на ходу,
     // удаляясь от собеседника, он не должен.
     stopActor(this.player)
     this.activeInteraction = null
     this.activeDialogue = openDialogue(npc.id, node, this.dialogueContext(npc.id))
+    // Узел засчитывается после того, как контекст снят: иначе реплика
+    // внутри узла, ссылающаяся на этот же узел, оказалась бы открыта
+    // с первого раза — «вспомните разговор, который идёт прямо сейчас».
+    this.markNodeVisited(node.id)
     return true
   }
 
@@ -607,6 +1155,7 @@ export class World {
     const context = this.dialogueContext(npc.id)
     const talk = new Conversation(entry.chain, context, { skillLabels: SKILL_LABELS })
     const node = talk.start()
+    this.markNodeVisited(node.id)
 
     this.activeChain = {
       chainId,
@@ -642,6 +1191,9 @@ export class World {
 
     const step = active.talk.choose(optionId)
     this.applyChainEffects(active.npcId, option.effects)
+    // Узел, в который перешли, тоже пройден: концовка сцены — такой же узел,
+    // и именно по ней потом узнают, чем у этих двоих всё кончилось.
+    this.markNodeVisited(option.next)
 
     // Ответив, игрок завязку уже прочёл: держать её на экране до конца
     // сцены значит отнимать место у разговора.
@@ -718,10 +1270,24 @@ export class World {
 
     const npc = this.speakerOf(entry.chain.speakerId)
     if (!npc) return false
+    if (!this.isWithinReach(npc)) return false
 
     const room = this.currentRoom
-    if (room === null || npcRoom(this.grid, npc) !== room) return false
     return entry.room === undefined || entry.room === room
+  }
+
+  /**
+   * Стоят ли игрок и этот житель этажа достаточно близко, чтобы говорить.
+   *
+   * Условий два, и оба нужны. Помещение отсекает разговоры через стену:
+   * два метра по прямой могут оказаться дверью, косяком и чужой аудиторией.
+   * Расстояние отсекает разговоры через весь коридор: помещение длиной
+   * в двадцать два метра — всё ещё одно помещение.
+   */
+  private isWithinReach(npc: Npc): boolean {
+    const room = this.currentRoom
+    if (room === null || npcRoom(this.grid, npc) !== room) return false
+    return isWithinTalkRange(this.player.position, npc.actor.position)
   }
 
   /**
@@ -772,7 +1338,9 @@ export class World {
         toneLabel: TONE_LABELS[option.tone],
         toneHint: toneHint(option.tone),
         available,
-        lockHint: available ? null : describeRequirement(option.requires),
+        lockHint: available
+          ? null
+          : describeRequirement(option.requires, this.requirementLabels),
       }
     })
   }
@@ -923,9 +1491,109 @@ export class World {
     return affinity(teacher.factionPosition, teacher.factionTolerance, this.faction)
   }
 
+  /* ---------------------------------------------------------------- */
+  /* Сохранение и загрузка                                             */
+  /* ---------------------------------------------------------------- */
+
+  /**
+   * Снимает состояние мира целиком — всё, что игрок нажил.
+   *
+   * Каталоги сюда не идут: планировка, предметы, курсы, преподаватели
+   * и тексты сцен приходят из content при запуске и одинаковы в любой
+   * партии. В сохранение попадает только то, чем один проход отличается
+   * от другого. Схему и версию держит sim/save/SaveGame.ts.
+   */
+  captureState(): WorldState {
+    return {
+      clock: this.clock.toJSON(),
+      needs: { ...this.needs },
+      skills: { ...this.skills },
+      faction: this.faction,
+      moodlets: this.moodlets.toJSON(),
+      player: { position: { ...this.player.position }, facing: this.player.facing },
+      npcs: this.npcManager.toJSON(),
+      activeInteraction: cloneData(this.activeInteraction),
+      relationships: this.relationships.toJSON(),
+      readBooks: [...this.readBooks],
+      visitedNodes: [...this.visitedNodes],
+      playedChains: [...this.playedChains],
+      lastSpeech: cloneData(this.lastSpeech),
+      study: this.study?.toJSON() ?? null,
+      day: {
+        summary: cloneData(this.daySummary),
+        weekendPending: this.weekendPending,
+        weekendReport: cloneData(this.weekendReport),
+        epilogue: cloneData(this.epilogue),
+        baseline: cloneData(this.dayBaseline),
+        stressSum: this.stressSum,
+        awakeMinutes: this.awakeMinutes,
+      },
+    }
+  }
+
+  /**
+   * Возвращает мир в сохранённое состояние.
+   *
+   * Журналы и списки не подменяются новыми объектами, а перезаполняются
+   * на месте: часы, отношения, модификаторы и учебное состояние розданы
+   * наружу по ссылке — рендер и панели держат их у себя, и подменённый
+   * объект остался бы у них старым.
+   *
+   * Разговор при загрузке закрывается: почему именно так — в WorldState.
+   */
+  restoreState(state: WorldState): void {
+    this.clock.load(state.clock)
+    this.needs = { ...state.needs }
+    this.skills = { ...state.skills }
+    this.faction = state.faction
+    this.moodlets.load(state.moodlets)
+
+    this.player.position = { ...state.player.position }
+    this.player.facing = state.player.facing
+    // Путь обрывается: сохранён не маршрут, а место, где человек стоит.
+    stopActor(this.player)
+    this.npcManager.load(state.npcs)
+
+    this.activeInteraction = cloneData(state.activeInteraction)
+    this.relationships.load(state.relationships)
+    this.readBooks = [...state.readBooks]
+    this.visitedNodes = [...state.visitedNodes]
+    this.playedChains = [...state.playedChains]
+    this.lastSpeech = cloneData(state.lastSpeech)
+    // Мир без учёбы и сохранение без учёбы — это разные сборки одной игры,
+    // а не разное состояние одной. Такое сохранение молча проходит мимо
+    // журналов: подставлять их некуда, и падать здесь не за что.
+    if (this.study && state.study) this.study.load(state.study)
+
+    this.daySummary = cloneData(state.day.summary)
+    this.weekendPending = state.day.weekendPending
+    this.weekendReport = cloneData(state.day.weekendReport)
+    this.epilogue = cloneData(state.day.epilogue)
+    this.dayBaseline = cloneData(state.day.baseline)
+    this.stressSum = state.day.stressSum
+    this.awakeMinutes = state.day.awakeMinutes
+
+    this.activeDialogue = null
+    this.activeChain = null
+  }
+
   /** Отмечает книгу прочитанной. Перечитывание ничего не меняет. */
   markBookRead(bookId: string): void {
     if (!this.readBooks.includes(bookId)) this.readBooks.push(bookId)
+  }
+
+  /**
+   * Запоминает, что игрок прошёл через этот узел разговора.
+   * Второй проход по тому же узлу ничего не добавляет: память отвечает
+   * на вопрос «было ли», а не «сколько раз».
+   */
+  markNodeVisited(nodeId: string): void {
+    if (!this.visitedNodes.includes(nodeId)) this.visitedNodes.push(nodeId)
+  }
+
+  /** Был ли у игрока разговор, проходящий через этот узел. */
+  hasVisitedNode(nodeId: string): boolean {
+    return this.visitedNodes.includes(nodeId)
   }
 
   /**
@@ -945,13 +1613,22 @@ export class World {
     return teacherId ? this.teachers[teacherId] : undefined
   }
 
-  /** Всё, что нужно, чтобы решить, какие реплики игроку доступны. */
+  /**
+   * Всё, что нужно, чтобы решить, какие реплики игроку доступны.
+   *
+   * Снимок, а не окно наружу: списки копируются. Контекст снимается один
+   * раз, в начале разговора, и живёт до его конца — реплики, появляющиеся
+   * и пропадающие на глазах у игрока от его же собственного выбора,
+   * читались бы как сбой.
+   */
   private dialogueContext(npcId: string): DialogueContext {
     return {
       skills: this.skills,
       faction: this.faction,
       relationship: this.relationships.get(npcId),
-      readBooks: this.readBooks,
+      readBooks: [...this.readBooks],
+      moodlets: this.moodlets.active(this.clock.totalMinutes).map((item) => item.id),
+      visitedNodes: [...this.visitedNodes],
       day: this.clock.time.day,
     }
   }
@@ -1032,7 +1709,10 @@ export class World {
       day,
       minutes,
       timeLabel: this.clock.formatTime(),
-      dayLabel: this.clock.formatDay(),
+      // Подпись берётся у календаря, а не у часов: часы умеют считать
+      // недели, но не знают ни про сессию, ни про конец модуля, — и после
+      // последнего дня честно объявили бы «Неделя 8, понедельник».
+      dayLabel: describeDay(day),
       speed: this.clock.speed,
       needs: this.needs,
       mood: this.mood,
@@ -1056,6 +1736,8 @@ export class World {
       availableChains: this.availableChains(),
       canSpeakAtSeminar: seminar?.canSpeak ?? false,
       seminar,
+      minutesUntilCurfew: minutesUntilCurfew(minutes),
+      dayScreen: this.dayScreenInfo(),
     }
   }
 
@@ -1127,7 +1809,14 @@ export class World {
     if (active.remainingMinutes <= 0) {
       this.applyNeeds(active.needDelta)
       if (active.moodletId) this.addMoodletById(active.moodletId)
+      const sleepSpotKind = active.sleepSpotKind
       this.activeInteraction = null
+
+      // Персонаж улёгся — дальше начинается ночь, а не следующее действие.
+      if (sleepSpotKind !== null) {
+        const spot = this.sleepSpots[sleepSpotKind]
+        if (spot) this.beginSleep(spot)
+      }
     }
   }
 }

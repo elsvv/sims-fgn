@@ -38,8 +38,11 @@ export function createRelationship(): Relationship {
   return { affection: 0, respect: 0 }
 }
 
+/** Отношения со всеми сразу: ключ — идентификатор человека. */
+export type RelationshipRecords = Record<string, Relationship>
+
 export class RelationshipMap {
-  private entries: Record<string, Relationship> = {}
+  private entries: RelationshipRecords = {}
 
   get(npcId: string): Relationship {
     return this.entries[npcId] ?? createRelationship()
@@ -68,13 +71,18 @@ export class RelationshipMap {
     return LEVEL_LABELS[this.levelOf(npcId)]
   }
 
-  toJSON(): Record<string, Relationship> {
-    return JSON.parse(JSON.stringify(this.entries)) as Record<string, Relationship>
+  toJSON(): RelationshipRecords {
+    return JSON.parse(JSON.stringify(this.entries)) as RelationshipRecords
   }
 
-  static fromJSON(entries: Record<string, Relationship>): RelationshipMap {
+  /** Возвращает состояние на место, в уже существующую карту отношений. */
+  load(entries: RelationshipRecords): void {
+    this.entries = JSON.parse(JSON.stringify(entries)) as RelationshipRecords
+  }
+
+  static fromJSON(entries: RelationshipRecords): RelationshipMap {
     const map = new RelationshipMap()
-    map.entries = JSON.parse(JSON.stringify(entries)) as Record<string, Relationship>
+    map.load(entries)
     return map
   }
 }

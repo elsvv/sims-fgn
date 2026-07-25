@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Course } from './Course'
-import { Gradebook, roundGrade } from './Gradebook'
+import { Gradebook, HELD_ASSESSMENT_KINDS, roundGrade } from './Gradebook'
 
 const COURSE: Course = {
   id: 'greek',
@@ -125,5 +125,34 @@ describe('Gradebook', () => {
     book.record('greek', 'exam', 7)
     const restored = Gradebook.fromJSON(JSON.parse(JSON.stringify(book.toJSON())))
     expect(restored.gradeFor('greek', 'exam')).toBe(7)
+  })
+})
+
+describe('оценка на конец модуля', () => {
+  it('считает только по проведённым элементам, нормируя веса', () => {
+    // Экзамена в игре пока нет: если бы он шёл в формулу нулём, восьмёрка
+    // за работу на занятиях превратилась бы в тройку.
+    const book = new Gradebook()
+    book.record('greek', 'classwork', 8)
+    expect(book.settledGrade(COURSE, ['seminar'])).toBe(8)
+  })
+
+  it('проведённое, но несделанное честно стоит ноль', () => {
+    const book = new Gradebook()
+    book.record('greek', 'classwork', 10)
+    // Контрольные проводились, а этих нет в ведомости — значит, ноль.
+    expect(book.settledGrade(COURSE, ['seminar', 'quiz'])).toBe(5)
+  })
+
+  it('молчавший весь модуль получает ноль, а не отсутствие оценки', () => {
+    expect(new Gradebook().settledGrade(COURSE, ['seminar'])).toBe(0)
+  })
+
+  it('дисциплину, у которой нечего оценивать, не оценивает вовсе', () => {
+    expect(new Gradebook().settledGrade(COURSE, ['essay'])).toBeNull()
+  })
+
+  it('игра пока проводит семинары — и объявляет об этом списком', () => {
+    expect([...HELD_ASSESSMENT_KINDS]).toEqual(['seminar'])
   })
 })

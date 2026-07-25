@@ -1,4 +1,11 @@
-import { createActor, isMoving, setDestination, stepActor, type Actor } from '../actor/Actor'
+import {
+  createActor,
+  isMoving,
+  setDestination,
+  stepActor,
+  stopActor,
+  type Actor,
+} from '../actor/Actor'
 import { lessonsOnDay, periodOf, type Lesson, type Schedule } from '../study/Schedule'
 import type { GridPos, Vec2 } from '../types'
 import type { NavGrid } from '../world/NavGrid'
@@ -116,6 +123,20 @@ export interface NpcPlan {
   room: string
   /** Пара, ради которой всё это происходит. null — просто своё место. */
   lesson: Lesson | null
+}
+
+/**
+ * Где стоит житель этажа. Всё, что о нём нужно сохранить.
+ *
+ * Ни цели, ни пути: чем человек занят, менеджер заново выводит из времени
+ * и расписания (см. planFor), и после загрузки выведет так же. Сохранять
+ * стоит только то, откуда он пойдёт, — иначе преподаватель, застигнутый
+ * сохранением у раковины, воскрес бы в своей аудитории.
+ */
+export interface NpcPlacement {
+  id: string
+  position: Vec2
+  facing: number
 }
 
 /** NPC в снимке состояния мира: всё, что нужно, чтобы его нарисовать. */
@@ -302,6 +323,33 @@ export class NpcManager {
       if (plan.activity !== 'idle' && !isMoving(npc.actor)) {
         this.faceRoom(grid, npc, plan.room)
       }
+    }
+  }
+
+  toJSON(): NpcPlacement[] {
+    return this.items.map((npc) => ({
+      id: npc.id,
+      position: { ...npc.actor.position },
+      facing: npc.actor.facing,
+    }))
+  }
+
+  /**
+   * Расставляет жителей этажа по сохранённым местам.
+   *
+   * Идущие пути обрываются, а цели забываются: следующий же тик посчитает
+   * по расписанию, где каждый должен быть, и отправит туда заново. Люди,
+   * которых в сохранении нет, остаются там, где менеджер их поставил, —
+   * старое сохранение не должно валиться из-за нового персонажа.
+   */
+  load(placements: readonly NpcPlacement[]): void {
+    this.goals.clear()
+    for (const placement of placements) {
+      const npc = this.find(placement.id)
+      if (!npc) continue
+      npc.actor.position = { ...placement.position }
+      npc.actor.facing = placement.facing
+      stopActor(npc.actor)
     }
   }
 

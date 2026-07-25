@@ -13,7 +13,8 @@ import { PROP_CATALOG } from '../props/propCatalog'
 import { STUDY_CONFIG } from '../study/courses'
 import { StudyState } from '../../sim/study/StudyState'
 import { DIALOGUE_CHAINS } from './chains'
-import { DIALOGUE_NODES } from './nodes'
+import { MAREY_RESTROOM_HAPPENED } from './marey-restroom'
+import { DIALOGUE_NODES, dialogueNodeFor } from './nodes'
 
 const ENTRIES = Object.entries(DIALOGUE_CHAINS)
 
@@ -101,6 +102,68 @@ describe('каталог многошаговых сцен', () => {
 })
 
 /* ------------------------------------------------------------------ */
+/* Память о разговорах: один общий список узлов на всю игру            */
+/* ------------------------------------------------------------------ */
+
+/** Все узлы игры: короткие разговоры и узлы всех сцен, с указанием, чьи они. */
+function allNodeIds(): { id: string; where: string }[] {
+  const nodes = Object.values(DIALOGUE_NODES).map((node) => ({
+    id: node.id,
+    where: 'короткие разговоры',
+  }))
+  for (const [key, entry] of ENTRIES) {
+    for (const node of entry.chain.nodes) nodes.push({ id: node.id, where: key })
+  }
+  return nodes
+}
+
+/** Все ссылки на прошлые разговоры из условий реплик. */
+function allMemoryReferences(): { nodeId: string; where: string }[] {
+  const refs: { nodeId: string; where: string }[] = []
+  for (const node of Object.values(DIALOGUE_NODES)) {
+    for (const option of node.options) {
+      const visited = option.requires?.visitedNode
+      if (visited !== undefined) refs.push({ nodeId: visited, where: `${node.id}/${option.id}` })
+    }
+  }
+  for (const [key, entry] of ENTRIES) {
+    for (const node of entry.chain.nodes) {
+      for (const option of node.options) {
+        const visited = option.requires?.visitedNode
+        if (visited !== undefined) {
+          refs.push({ nodeId: visited, where: `${key}/${node.id}/${option.id}` })
+        }
+      }
+    }
+  }
+  return refs
+}
+
+describe('память о прошлых разговорах', () => {
+  it('идентификаторы узлов не повторяются во всей игре', () => {
+    // Память — один плоский список: два разных узла под одним именем
+    // означали бы, что один разговор помнится вместо другого.
+    const seen = new Map<string, string>()
+    for (const { id, where } of allNodeIds()) {
+      const owner = seen.get(id)
+      expect(owner, `узел «${id}» есть и в «${owner}», и в «${where}»`).toBeUndefined()
+      seen.set(id, where)
+    }
+  })
+
+  it('каждая ссылка на прошлый разговор ведёт в существующий узел', () => {
+    const known = new Set(allNodeIds().map((node) => node.id))
+    for (const { nodeId, where } of allMemoryReferences()) {
+      expect(known.has(nodeId), `${where} ссылается на несуществующий узел «${nodeId}»`).toBe(true)
+    }
+  })
+
+  it('память о прошлых разговорах вообще используется', () => {
+    expect(allMemoryReferences().length).toBeGreaterThan(0)
+  })
+})
+
+/* ------------------------------------------------------------------ */
 /* Сцена «Марей в туалете» целиком, через мир                          */
 /* ------------------------------------------------------------------ */
 
@@ -128,13 +191,21 @@ function makeWorld(spawn = IN_RESTROOM): World {
   )
 }
 
-/** Прокручивает игровое время до указанного дня и минуты суток. */
+/**
+ * Прокручивает игровое время до указанного дня и минуты суток.
+ *
+ * Итоги дня закрываются по дороге: после двух ночи персонаж вырубается,
+ * и мир стоит, пока игрок не прочитает, как прошёл день. Прокрутка обязана
+ * вести себя как игрок, иначе упрётся в первую же ночь.
+ */
 function runUntil(world: World, day: number, minutes: number): void {
   world.clock.speed = 3
   for (let i = 0; i < 400000; i++) {
     const now = world.clock.time
     if (now.day > day || (now.day === day && now.minutes >= minutes)) break
     world.tick(0.25)
+    world.dismissDaySummary()
+    world.dismissWeekendReport()
   }
   expect(world.clock.time.day).toBe(day)
   expect(world.clock.time.minutes).toBeGreaterThanOrEqual(minutes)
@@ -364,5 +435,51 @@ describe('«Марей в туалете»: все пять концовок п�
       expect(change.text).not.toMatch(/\d/)
       expect(change.marker).toMatch(/^[↑↓—]+$/)
     }
+  })
+})
+
+describe('«Марей в туалете» помнится в следующих разговорах', () => {
+  /** Реплики, открытые игроку в начатом коротком разговоре. */
+  function optionsOf(world: World): string[] {
+    return world.snapshot().activeDialogue?.options.map((option) => option.id) ?? []
+  }
+
+  /** Играет сцену до «братства по оружию» и закрывает окно. */
+  function afterTheScene(): World {
+    const world = worldAtTheEncounter()
+    play(world, ['opening-direct', 'counter-direct', 'confession-direct', 'antiquity-direct'])
+    world.endChainDialogue()
+    return world
+  }
+
+  it('тому, кто его не окликал, вспоминать нечего', () => {
+    const world = worldAtTheEncounter()
+    expect(world.hasVisitedNode(MAREY_RESTROOM_HAPPENED)).toBe(false)
+    expect(world.startDialogue('marey-course')).toBe(true)
+    expect(optionsOf(world)).not.toContain('remember-restroom')
+  })
+
+  it('сыгранная сцена остаётся в памяти мира', () => {
+    expect(afterTheScene().hasVisitedNode(MAREY_RESTROOM_HAPPENED)).toBe(true)
+  })
+
+  it('и открывает особую реплику в разговоре о курсе', () => {
+    const world = afterTheScene()
+    expect(world.startDialogue('marey-course')).toBe(true)
+    expect(optionsOf(world)).toContain('remember-restroom')
+  })
+
+  it('после такого разговора он и так говорит с вами о деле, а не знакомится', () => {
+    const world = afterTheScene()
+    expect(dialogueNodeFor('marey', world.relationships.get(MAREY_NPC))).toBe('marey-course')
+  })
+
+  it('реплика работает: он отвечает, и уважения прибавляется', () => {
+    const world = afterTheScene()
+    world.startDialogue('marey-course')
+    const before = world.relationships.get(MAREY_NPC).respect
+
+    expect(world.chooseOption('remember-restroom')).toContain('Итак')
+    expect(world.relationships.get(MAREY_NPC).respect).toBeGreaterThan(before)
   })
 })

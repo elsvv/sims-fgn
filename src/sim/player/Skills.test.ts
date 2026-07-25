@@ -128,6 +128,8 @@ describe('навыки', () => {
       faction: 0,
       relationship: createRelationship(),
       readBooks: [],
+      moodlets: [],
+      visitedNodes: [],
       day: 0,
     }
     const requirement = { skillId: 'ancientLanguages', skillMin: 4 }

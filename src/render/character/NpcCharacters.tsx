@@ -37,9 +37,10 @@ function nameOf(npc: Npc): string {
 /**
  * Что делает клик по человеку.
  *
- * Разговор начинается только в одном помещении с собеседником. Если игрок
- * стоит в другом конце этажа, отказывать молча нельзя — персонаж идёт
- * к нему сам, и разговор начнётся со второго нажатия, когда он дойдёт.
+ * Разговор начинается, только когда оба стоят в одном помещении и рядом:
+ * в другом конце коридора собеседника не слышно, даже если коридор общий.
+ * Отказывать молча нельзя — персонаж идёт к нему сам, и разговор начнётся
+ * со второго нажатия, когда он дойдёт.
  *
  * Что именно начнётся, решает положение дел. Сцена важнее короткого
  * обмена репликами: если этих двоих свело в туалете за час до пары,
@@ -56,12 +57,15 @@ function talkTo(world: World, npc: Npc): void {
   const chainId = world.chainForNpc(npc.id)
   if (chainId && world.startChainDialogue(chainId)) return
 
-  if (!npc.teacherId) return
+  const nodeId = npc.teacherId
+    ? dialogueNodeFor(npc.teacherId, world.relationships.get(npc.id))
+    : null
+  if (nodeId && world.startDialogue(nodeId)) return
 
-  const nodeId = dialogueNodeFor(npc.teacherId, world.relationships.get(npc.id))
-  if (!nodeId) return
-
-  if (!world.startDialogue(nodeId)) world.commandApproachNpc(npc.id)
+  // Отсюда не заговорить: либо между вами стена, либо десяток метров.
+  // Клик по человеку в любом случае значит «хочу к нему», поэтому
+  // персонаж идёт, а разговор начнётся со второго нажатия.
+  world.commandApproachNpc(npc.id)
 }
 
 /**

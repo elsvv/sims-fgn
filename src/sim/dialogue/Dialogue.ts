@@ -9,6 +9,18 @@ export interface DialogueContext {
   relationship: Relationship
   /** Идентификаторы прочитанных книг. */
   readBooks: string[]
+  /**
+   * Идентификаторы модификаторов настроения, действующих прямо сейчас.
+   * Через них разговор узнаёт, в каком состоянии игрок к нему пришёл:
+   * похвалили его час назад или он полчаса ждал лифт.
+   */
+  moodlets: readonly string[]
+  /**
+   * Узлы разговоров, через которые игрок уже прошёл. Это и есть память
+   * о прошлых разговорах: сцену, которая между вами была, нельзя завести
+   * заново, но помнить о ней следующий разговор обязан.
+   */
+  visitedNodes: readonly string[]
   day: number
 }
 
@@ -20,6 +32,19 @@ export interface DialogueRequirement {
   respectMin?: number
   affectionMin?: number
   book?: string
+  /**
+   * Требуется действующий модификатор настроения.
+   * «Скажите это, пока вас не отпустило».
+   */
+  moodletId?: string
+  /**
+   * Требуется, наоборот, отсутствие модификатора: есть вещи, которых
+   * не говорят, пока свежа обида, — и наоборот, тон, который доступен
+   * только на трезвую голову.
+   */
+  withoutMoodletId?: string
+  /** Требуется, чтобы игрок уже прошёл через этот узел разговора. */
+  visitedNode?: string
 }
 
 export interface DialogueEffects {
@@ -89,6 +114,24 @@ export function isAvailable(
     return false
   }
   if (requirement.book !== undefined && !context.readBooks.includes(requirement.book)) {
+    return false
+  }
+  if (
+    requirement.moodletId !== undefined &&
+    !context.moodlets.includes(requirement.moodletId)
+  ) {
+    return false
+  }
+  if (
+    requirement.withoutMoodletId !== undefined &&
+    context.moodlets.includes(requirement.withoutMoodletId)
+  ) {
+    return false
+  }
+  if (
+    requirement.visitedNode !== undefined &&
+    !context.visitedNodes.includes(requirement.visitedNode)
+  ) {
     return false
   }
   return true

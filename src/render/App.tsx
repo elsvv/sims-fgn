@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import { GameCanvas } from './GameCanvas'
 import { ConversationPanel } from './ui/ConversationPanel'
+import { DayScreen } from './ui/DayScreen'
 import { DialoguePanel } from './ui/DialoguePanel'
 import './ui/hud.css'
 import { InteractionMenu } from './ui/InteractionMenu'
 import { NeedsPanel } from './ui/NeedsPanel'
 import { PeoplePanel } from './ui/PeoplePanel'
+import { SaveMenu } from './ui/SaveMenu'
 import { SchedulePanel } from './ui/SchedulePanel'
 import { SeminarPanel } from './ui/SeminarPanel'
 import { SkillsPanel } from './ui/SkillsPanel'
@@ -48,6 +50,13 @@ function Hud({
           которое ведёт разговор, а не то, которое его начинало. */}
       <DialoguePanel />
       <ConversationPanel />
+      {/* Меню игры перекрывает разговоры: сохраниться и начать заново можно
+          в любой момент, в том числе посреди сцены. */}
+      <SaveMenu />
+      {/* Экраны конца дня объявлены последними и накрывают всё: пока игрок
+          читает итоги дня или выбирает воскресенье, он не в мире, и панели
+          мира под этим текстом только мешают. */}
+      <DayScreen />
     </div>
   )
 }

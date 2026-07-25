@@ -543,3 +543,60 @@ describe('NpcManager: заход в туалет перед парой', () => {
     expect(npcRoom(grid, npc)).toBe('А-204')
   })
 })
+
+describe('жители этажа в сохранении', () => {
+  it('снимок берёт места и направления взгляда всех', () => {
+    const grid = makeGrid()
+    const manager = makeManager([ALIEVA, DOLGORUKOV], grid)
+    run(manager, grid, FIRST.startMinutes - ARRIVE_BEFORE_MINUTES, FIRST.startMinutes)
+
+    const placements = manager.toJSON()
+    expect(placements.map((item) => item.id)).toEqual(['teacher-alieva', 'teacher-dolgorukov'])
+    expect(placements[0]?.position).toEqual(manager.find('teacher-alieva')?.actor.position)
+    expect(placements[0]?.facing).toBe(manager.find('teacher-alieva')?.actor.facing)
+  })
+
+  it('загрузка ставит людей туда, где их застали', () => {
+    const grid = makeGrid()
+    const played = makeManager([ALIEVA], grid)
+    run(played, grid, FIRST.startMinutes - ARRIVE_BEFORE_MINUTES, FIRST.startMinutes)
+    expect(npcRoom(grid, played.find('teacher-alieva')!)).toBe('А-204')
+
+    const loaded = makeManager([ALIEVA], grid)
+    expect(npcRoom(grid, loaded.find('teacher-alieva')!)).toBe('коридор')
+
+    loaded.load(played.toJSON())
+    expect(loaded.toJSON()).toEqual(played.toJSON())
+    expect(npcRoom(grid, loaded.find('teacher-alieva')!)).toBe('А-204')
+    expect(isMoving(loaded.find('teacher-alieva')!.actor)).toBe(false)
+  })
+
+  it('после загрузки распорядок считается заново, а не продолжается по старому пути', () => {
+    const grid = makeGrid()
+    const played = makeManager([ALIEVA], grid)
+    // Человек застигнут на полпути в аудиторию.
+    run(played, grid, FIRST.startMinutes - ARRIVE_BEFORE_MINUTES, FIRST.startMinutes - 20)
+
+    const loaded = makeManager([ALIEVA], grid)
+    loaded.load(played.toJSON())
+    expect(loaded.goalOf('teacher-alieva')).toBeNull()
+
+    run(loaded, grid, FIRST.startMinutes - 20, FIRST.startMinutes)
+    run(played, grid, FIRST.startMinutes - 20, FIRST.startMinutes)
+    expect(loaded.find('teacher-alieva')!.actor.position).toEqual(
+      played.find('teacher-alieva')!.actor.position,
+    )
+    expect(npcRoom(grid, loaded.find('teacher-alieva')!)).toBe('А-204')
+  })
+
+  it('незнакомый в сохранении человек остаётся на своём месте', () => {
+    // Старое сохранение не должно валиться из-за персонажа, которого
+    // в нём ещё не было.
+    const grid = makeGrid()
+    const manager = makeManager([ALIEVA, DOLGORUKOV], grid)
+    const before = { ...manager.find('teacher-dolgorukov')!.actor.position }
+
+    manager.load([{ id: 'кто-то-новый', position: { x: 1, z: 1 }, facing: 0 }])
+    expect(manager.find('teacher-dolgorukov')!.actor.position).toEqual(before)
+  })
+})

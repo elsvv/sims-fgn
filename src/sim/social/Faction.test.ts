@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { affinity, affinityBonus, clampFaction, factionLabel } from './Faction'
+import {
+  affinity,
+  affinityBonus,
+  clampFaction,
+  factionLabel,
+  factionMeaning,
+} from './Faction'
 
 describe('шкала традиций', () => {
   it('зажимает значение', () => {
@@ -43,5 +49,23 @@ describe('близость к преподавателю', () => {
     expect(affinityBonus(1)).toBeGreaterThan(affinityBonus(0))
     expect(affinityBonus(0)).toBeGreaterThan(affinityBonus(-1))
     expect(affinityBonus(-1)).toBeGreaterThan(0)
+  })
+})
+
+describe('трактовка позиции', () => {
+  it('у каждой точки шкалы есть трактовка', () => {
+    for (let value = -100; value <= 100; value += 5) {
+      expect(factionMeaning(value).length, String(value)).toBeGreaterThan(40)
+    }
+  })
+
+  it('полюса трактуются по-разному', () => {
+    expect(factionMeaning(-100)).not.toBe(factionMeaning(100))
+    expect(factionMeaning(0)).not.toBe(factionMeaning(100))
+  })
+
+  it('это рассказ о человеке, а не подпись шкалы', () => {
+    expect(factionMeaning(-100)).not.toBe(factionLabel(-100))
+    expect(factionMeaning(0)).toMatch(/[А-Яа-яЁё]/)
   })
 })

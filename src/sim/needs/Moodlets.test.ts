@@ -175,6 +175,20 @@ describe('список модификаторов', () => {
     expect(snapshot.length).toBe(1)
   })
 
+  it('загрузка заменяет список, а не сливается с ним', () => {
+    // Мир загружает сохранение в уже существующий список. Через add это
+    // делать нельзя: он объединяет одинаковые записи и берёт больший срок,
+    // и загруженный кофе продлевал бы выпитый до сохранения.
+    const list = new MoodletList()
+    list.add({ ...at(COFFEE, 0), expiresAtMinute: 500 })
+    list.add(at(ELEVATOR, 0))
+
+    list.load([at(COFFEE, 0)])
+    expect(list.size).toBe(1)
+    expect(list.active(10).map((item) => item.id)).toEqual([COFFEE.id])
+    expect(list.active(10)[0]?.expiresAtMinute).toBe(at(COFFEE, 0).expiresAtMinute)
+  })
+
   it('загруженный список не связан с исходными данными', () => {
     const data = [at(COFFEE, 0)]
     const restored = MoodletList.fromJSON(data)

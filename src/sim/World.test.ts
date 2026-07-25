@@ -222,6 +222,22 @@ const IN_CLASS = { col: 1, row: 0 }
 const IN_CORRIDOR = { col: 1, row: 2 }
 const IN_OTHER_CLASS = { col: 6, row: 0 }
 
+/**
+ * Два места в том же коридоре, где стоят преподаватели.
+ *
+ * Места в домашнем помещении раздаются с равными промежутками, поэтому
+ * в коридоре из девяти клеток «континентальный» оказывается в третьей,
+ * «аналитический» — в седьмой. IN_CORRIDOR — это шаг от первого из них
+ * и пять метров от второго; чтобы заговорить со вторым, надо встать рядом
+ * с ним, а не просто зайти в тот же коридор.
+ */
+const NEXT_TO_ANALYTIC = { col: 7, row: 2 }
+/**
+ * Дальний конец коридора. «Континентальный» отсюда за шесть метров:
+ * то же помещение, а разговаривать не с кем.
+ */
+const FAR_END_OF_CORRIDOR = { col: 8, row: 2 }
+
 function makeStudyWorld(spawn: { col: number; row: number }): World {
   const study = new StudyState({
     courses: STUDY_COURSES,
@@ -231,10 +247,26 @@ function makeStudyWorld(spawn: { col: number; row: number }): World {
   return new World(STUDY_PLAN, spawn, {}, study)
 }
 
+/**
+ * Закрывает экран, прерывающий игру.
+ *
+ * Ночь в два часа наступает сама, и после неё мир стоит, пока игрок
+ * не прочитает итоги дня. Прокрутка времени в тестах обязана вести себя
+ * как игрок: прочитать и нажать «Дальше», — иначе часы упрутся в первую же
+ * ночь и никуда дальше не пойдут.
+ */
+function passDayScreens(world: World): void {
+  world.dismissDaySummary()
+  world.dismissWeekendReport()
+}
+
 /** Прокручивает игровое время до указанной минуты суток. */
 function runUntil(world: World, minutes: number): void {
   world.clock.speed = 3
-  for (let i = 0; i < 20000 && world.clock.time.minutes < minutes; i++) world.tick(0.25)
+  for (let i = 0; i < 20000 && world.clock.time.minutes < minutes; i++) {
+    world.tick(0.25)
+    passDayScreens(world)
+  }
   expect(world.clock.time.minutes).toBeGreaterThanOrEqual(minutes)
 }
 
@@ -249,6 +281,7 @@ function runUntilNextWeek(world: World, minutes: number): void {
     const { day, minutes: now } = world.clock.time
     if (day > target || (day === target && now >= minutes)) break
     world.tick(0.25)
+    passDayScreens(world)
   }
   expect(world.clock.time.day).toBe(target)
   expect(world.clock.time.minutes).toBeGreaterThanOrEqual(minutes)
@@ -696,9 +729,44 @@ function talkNode(speakerId: string): DialogueNode {
   }
 }
 
+/**
+ * Узел, все условия которого — про состояние игрока, а не про его умения:
+ * что он помнит и в каком настроении пришёл.
+ */
+const MEMORY_NODE: DialogueNode = {
+  id: 'continental-again',
+  speakerId: 'continental',
+  prompt: 'Опять вы. Ну, что на этот раз?',
+  options: [
+    { id: 'safe', text: 'Промолчать', effects: {}, reply: 'Понятно.' },
+    {
+      id: 'remembers',
+      text: 'Напомнить о прошлом разговоре',
+      requires: { visitedNode: 'continental-hall' },
+      effects: { respect: 5 },
+      reply: 'Помню, помню.',
+    },
+    {
+      id: 'while-praised',
+      text: 'Пользуясь случаем, попросить о большем',
+      requires: { moodletId: 'praised' },
+      effects: { affection: 4 },
+      reply: 'Куйте железо.',
+    },
+    {
+      id: 'not-while-sour',
+      text: 'Спокойно возразить по существу',
+      requires: { withoutMoodletId: 'elevator' },
+      effects: { respect: 3 },
+      reply: 'Возражайте.',
+    },
+  ],
+}
+
 const TALK_DIALOGUES: DialogueCatalog = {
   'continental-hall': talkNode('continental'),
   'analytic-hall': talkNode('analytic'),
+  'continental-again': MEMORY_NODE,
 }
 
 const TALK_NPCS: NpcSpec[] = [
@@ -707,7 +775,7 @@ const TALK_NPCS: NpcSpec[] = [
 ]
 
 function makeTalkWorld(spawn = IN_CORRIDOR): World {
-  return new World(STUDY_PLAN, spawn, {}, null, {}, TALK_NPCS, {
+  return new World(STUDY_PLAN, spawn, {}, null, MOODLET_CATALOG, TALK_NPCS, {
     teachers: TALK_TEACHERS,
     dialogues: TALK_DIALOGUES,
   })
@@ -744,6 +812,36 @@ describe('World: начало разговора', () => {
     expect(world.activeDialogue).toBeNull()
   })
 
+  it('через весь коридор заговорить нельзя, хоть помещение и общее', () => {
+    const world = makeTalkWorld(FAR_END_OF_CORRIDOR)
+    const npc = world.npcManager.find('teacher-continental')!
+    // Помещение то же самое — значит, отказ даёт именно расстояние.
+    expect(world.currentRoom).toBe('коридор')
+    expect(npcRoom(world.grid, npc)).toBe('коридор')
+
+    expect(world.startDialogue('continental-hall')).toBe(false)
+    expect(world.activeDialogue).toBeNull()
+  })
+
+  it('дойдя по коридору, заговорить наконец можно', () => {
+    const world = makeTalkWorld(FAR_END_OF_CORRIDOR)
+    expect(world.startDialogue('continental-hall')).toBe(false)
+
+    world.commandApproachNpc('teacher-continental')
+    world.clock.speed = 3
+    for (let i = 0; i < 600 && isMoving(world.player); i++) world.tick(0.05)
+
+    expect(world.startDialogue('continental-hall')).toBe(true)
+  })
+
+  it('со вторым преподавателем в том же коридоре разговор идёт с его места', () => {
+    // Один коридор, двое, и заговорить можно с тем, рядом с кем стоишь.
+    const world = makeTalkWorld(NEXT_TO_ANALYTIC)
+    expect(world.startDialogue('continental-hall')).toBe(false)
+    expect(world.startDialogue('analytic-hall')).toBe(true)
+    expect(world.activeDialogue?.npcId).toBe('teacher-analytic')
+  })
+
   it('в разговоре видны только доступные реплики', () => {
     const world = makeTalkWorld()
     world.startDialogue('continental-hall')
@@ -767,6 +865,97 @@ describe('World: начало разговора', () => {
     world.markBookRead('phaedo')
     world.markBookRead('phaedo')
     expect(world.readBooks).toEqual(['phaedo'])
+  })
+})
+
+describe('World: разговоры помнят друг о друге', () => {
+  /** Идентификаторы реплик, открытых игроку в начатом разговоре. */
+  function optionsOf(world: World): string[] {
+    return world.activeDialogue?.options.map((option) => option.id) ?? []
+  }
+
+  it('нового человека мир не помнит ни по одному разговору', () => {
+    expect(makeTalkWorld().visitedNodes).toEqual([])
+  })
+
+  it('начатый разговор попадает в память', () => {
+    const world = makeTalkWorld()
+    world.startDialogue('continental-hall')
+    expect(world.hasVisitedNode('continental-hall')).toBe(true)
+  })
+
+  it('второй заход в тот же узел памяти не удваивает', () => {
+    const world = makeTalkWorld()
+    world.startDialogue('continental-hall')
+    world.endDialogue()
+    world.startDialogue('continental-hall')
+    expect(world.visitedNodes).toEqual(['continental-hall'])
+  })
+
+  it('реплика про прошлый разговор закрыта, пока разговора не было', () => {
+    const world = makeTalkWorld()
+    world.startDialogue('continental-again')
+    expect(optionsOf(world)).not.toContain('remembers')
+  })
+
+  it('после того разговора она открывается', () => {
+    const world = makeTalkWorld()
+    world.startDialogue('continental-hall')
+    world.endDialogue()
+
+    world.startDialogue('continental-again')
+    expect(optionsOf(world)).toContain('remembers')
+    expect(world.chooseOption('remembers')).toBe('Помню, помню.')
+  })
+
+  it('узел не открывает реплику про самого себя посреди себя же', () => {
+    // Память снимается до того, как узел в неё попадает: иначе «вспомните
+    // разговор» открывалось бы в том же разговоре, в котором сказано.
+    const world = makeTalkWorld()
+    world.startDialogue('continental-again')
+    world.markNodeVisited('continental-hall')
+    expect(optionsOf(world)).not.toContain('remembers')
+  })
+})
+
+describe('World: реплики зависят от настроения', () => {
+  function optionsOf(world: World): string[] {
+    return world.activeDialogue?.options.map((option) => option.id) ?? []
+  }
+
+  it('реплика «пока не отпустило» закрыта без модификатора', () => {
+    const world = makeTalkWorld()
+    world.startDialogue('continental-again')
+    expect(optionsOf(world)).not.toContain('while-praised')
+  })
+
+  it('и открыта, пока модификатор держится', () => {
+    const world = makeTalkWorld()
+    expect(world.addMoodletById('praised')).toBe(true)
+    world.startDialogue('continental-again')
+    expect(optionsOf(world)).toContain('while-praised')
+  })
+
+  it('просроченный модификатор реплику уже не открывает', () => {
+    const world = makeTalkWorld()
+    world.addMoodlet({ id: 'praised', label: 'Похвалили', mood: 10, durationMinutes: 30 })
+    const expiresAt = world.clock.totalMinutes + 30
+    world.clock.speed = 3
+    for (let i = 0; i < 4000 && world.clock.totalMinutes <= expiresAt; i++) world.tick(0.25)
+
+    world.startDialogue('continental-again')
+    expect(optionsOf(world)).not.toContain('while-praised')
+  })
+
+  it('реплика «на трезвую голову» закрывается, когда настроение испорчено', () => {
+    const world = makeTalkWorld()
+    world.startDialogue('continental-again')
+    expect(optionsOf(world)).toContain('not-while-sour')
+    world.endDialogue()
+
+    world.addMoodletById('elevator')
+    world.startDialogue('continental-again')
+    expect(optionsOf(world)).not.toContain('not-while-sour')
   })
 })
 
@@ -848,11 +1037,17 @@ describe('World: выбор реплики', () => {
 })
 
 describe('World: шкала традиций управляет уважением', () => {
+  /** Где надо встать, чтобы заговорить именно с этим человеком. */
+  const SPOT: Record<string, { col: number; row: number }> = {
+    'teacher-continental': IN_CORRIDOR,
+    'teacher-analytic': NEXT_TO_ANALYTIC,
+  }
+
   /** Уважение, заработанное одним и тем же ответом у одного из двоих. */
   function respectFrom(npcId: string, nodeId: string, faction: number): number {
-    const world = makeTalkWorld()
+    const world = makeTalkWorld(SPOT[npcId])
     world.faction = faction
-    world.startDialogue(nodeId)
+    expect(world.startDialogue(nodeId), npcId).toBe(true)
     world.chooseOption('smart')
     return world.relationships.get(npcId).respect
   }
@@ -944,6 +1139,7 @@ describe('World: подход к собеседнику', () => {
       remainingMinutes: 10,
       needDelta: {},
       moodletId: null,
+      sleepSpotKind: null,
     }
     world.commandApproachNpc('teacher-continental')
     expect(world.activeInteraction).toBeNull()
@@ -1139,6 +1335,29 @@ describe('World: начало многошаговой сцены', () => {
     expect(world.activeChain).toBeNull()
   })
 
+  it('через весь коридор сцену не завести', () => {
+    const world = makeChainWorld(FAR_END_OF_CORRIDOR)
+    expect(world.currentRoom).toBe('коридор')
+    expect(world.startChainDialogue('у-автомата')).toBe(false)
+    expect(world.activeChain).toBeNull()
+  })
+
+  it('издалека сцену не подсказывают, даже стоя в её помещении', () => {
+    const world = makeChainWorld(FAR_END_OF_CORRIDOR)
+    expect(world.availableChains()).toEqual([])
+    expect(world.chainForNpc('teacher-continental')).toBeNull()
+  })
+
+  it('подойдя по коридору, сцену наконец заводят', () => {
+    const world = makeChainWorld(FAR_END_OF_CORRIDOR)
+    world.commandApproachNpc('teacher-continental')
+    world.clock.speed = 3
+    for (let i = 0; i < 600 && isMoving(world.player); i++) world.tick(0.05)
+
+    expect(world.chainForNpc('teacher-continental')).toBe('у-автомата')
+    expect(world.startChainDialogue('у-автомата')).toBe(true)
+  })
+
   it('сцена привязана к помещению: в чужой комнате её нет', () => {
     // Собеседник рядом, но сцена написана для коридора, а стоят оба
     // в аудитории — значит, это не она.
@@ -1239,6 +1458,31 @@ describe('World: ход многошаговой сцены', () => {
     expect(locked?.available).toBe(false)
     expect(locked?.lockHint).toBe('нужны древние языки')
     expect(locked?.text).toBe('Ответить цитатой из оригинала')
+  })
+
+  it('закрытая по настроению реплика называет, чего именно ждут', () => {
+    const chain: DialogueChainData = {
+      ...CHAIN,
+      nodes: CHAIN.nodes.map((node) =>
+        node.id === 'start'
+          ? {
+              ...node,
+              options: node.options.map((option) =>
+                option.id === 'locked'
+                  ? { ...option, requires: { moodletId: 'praised' } }
+                  : option,
+              ),
+            }
+          : node,
+      ),
+    }
+    const world = makeChainWorld(IN_CORRIDOR, { 'у-автомата': { chain, room: 'коридор' } })
+    world.startChainDialogue('у-автомата')
+
+    const locked = world.snapshot().activeChain?.options.find((o) => o.id === 'locked')
+    expect(locked?.available).toBe(false)
+    // Подпись берётся из каталога модификаторов, а не выдумывается на месте.
+    expect(locked?.lockHint).toBe('нужно, чтобы ещё держалось «Похвалил Михайловский»')
   })
 
   it('прокачанному игроку та же реплика открыта и без подсказки', () => {
@@ -1466,6 +1710,45 @@ describe('World: эффекты многошаговой сцены', () => {
     world.continueChainDialogue()
     world.chooseChainOption('finish-bad')
     expect(world.snapshot().activeMoodlets).toEqual([])
+  })
+})
+
+describe('World: сцена остаётся в памяти', () => {
+  it('начатая сцена запоминается с первого же узла', () => {
+    const world = makeChainWorld()
+    world.startChainDialogue('у-автомата')
+    expect(world.visitedNodes).toEqual(['start'])
+  })
+
+  it('пройденный путь запоминается целиком, включая концовку', () => {
+    const world = makeChainWorld()
+    world.startChainDialogue('у-автомата')
+    world.chooseChainOption('plain')
+    world.continueChainDialogue()
+    world.chooseChainOption('finish-good')
+
+    expect(world.visitedNodes).toEqual(['start', 'second', 'end-good'])
+  })
+
+  it('концовки разных путей различимы: помнится не сцена, а её конец', () => {
+    const world = makeChainWorld()
+    world.startChainDialogue('у-автомата')
+    world.chooseChainOption('plain')
+    world.continueChainDialogue()
+    world.chooseChainOption('finish-bad')
+
+    expect(world.hasVisitedNode('end-bad')).toBe(true)
+    expect(world.hasVisitedNode('end-good')).toBe(false)
+  })
+
+  it('брошенная на середине сцена помнится ровно до места, где её бросили', () => {
+    const world = makeChainWorld()
+    world.startChainDialogue('у-автомата')
+    world.chooseChainOption('plain')
+    world.endChainDialogue()
+
+    expect(world.hasVisitedNode('second')).toBe(true)
+    expect(world.hasVisitedNode('end-good')).toBe(false)
   })
 })
 

@@ -33,8 +33,11 @@ export interface WorkContext {
 /** Во сколько раз штрафуется оценка за просрочку. */
 const OVERDUE_PENALTY = 0.5
 
+/** Ход работы над всеми эссе сразу: ключ — идентификатор задания. */
+export type EssayRecords = Record<string, EssayProgress>
+
 export class EssayJournal {
-  private progress: Record<string, EssayProgress> = {}
+  private progress: EssayRecords = {}
 
   start(task: EssayTask): void {
     if (this.progress[task.id]) return
@@ -93,13 +96,18 @@ export class EssayJournal {
     return currentDay > task.dueDay
   }
 
-  toJSON(): Record<string, EssayProgress> {
-    return JSON.parse(JSON.stringify(this.progress)) as Record<string, EssayProgress>
+  toJSON(): EssayRecords {
+    return JSON.parse(JSON.stringify(this.progress)) as EssayRecords
   }
 
-  static fromJSON(progress: Record<string, EssayProgress>): EssayJournal {
+  /** Возвращает состояние на место, в уже существующий журнал. */
+  load(progress: EssayRecords): void {
+    this.progress = JSON.parse(JSON.stringify(progress)) as EssayRecords
+  }
+
+  static fromJSON(progress: EssayRecords): EssayJournal {
     const journal = new EssayJournal()
-    journal.progress = JSON.parse(JSON.stringify(progress)) as Record<string, EssayProgress>
+    journal.load(progress)
     return journal
   }
 }

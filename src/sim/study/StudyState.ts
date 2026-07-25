@@ -1,7 +1,12 @@
-import { AttendanceLog, type AttendanceCounts, type AttendanceMark } from './Attendance'
+import {
+  AttendanceLog,
+  type AttendanceCounts,
+  type AttendanceMark,
+  type AttendanceRecords,
+} from './Attendance'
 import { PASSING_GRADE, type Course, type CourseCatalog } from './Course'
-import { EssayJournal, type EssayTask } from './Essay'
-import { Gradebook } from './Gradebook'
+import { EssayJournal, type EssayRecords, type EssayTask } from './Essay'
+import { Gradebook, type GradeRecords } from './Gradebook'
 import type { Schedule } from './Schedule'
 import type { SeminarOption } from './Seminar'
 
@@ -14,6 +19,24 @@ export interface StudyConfig {
    * просто выступать в нём нечем — так собраны тесты посещаемости.
    */
   seminarOptions?: readonly SeminarOption[]
+}
+
+/**
+ * Учебное состояние в сохранении.
+ *
+ * Программы дисциплин, расписание и задания сюда не идут: это содержимое
+ * каталога, оно приходит из content и одинаково у всех. В сохранении лежит
+ * только то, что студент нажил сам, — оценки, отметки о посещении, ход
+ * работы над эссе и сказанное на семинарах.
+ */
+export interface StudyStateData {
+  grades: GradeRecords
+  attendance: AttendanceRecords
+  essays: EssayRecords
+  /** Оценки за каждое выступление по дисциплинам: из них считается среднее. */
+  seminarScores: Record<string, number[]>
+  /** Пары, на которых игрок выступал, и оценка за каждое выступление. */
+  spokenOccurrences: Record<string, number>
 }
 
 export interface CourseStatus {
@@ -39,11 +62,16 @@ export class StudyState {
   private seminarScores: Record<string, number[]> = {}
 
   /**
-   * Пары, на которых игрок уже выступал. Ключ — конкретная состоявшаяся пара
-   * (occurrenceId в Schedule): дважды за одну пару слова не дают, а на
-   * следующей неделе тот же семинар начинается с чистого листа.
+   * Пары, на которых игрок уже выступал, и оценка за каждое выступление.
+   * Ключ — конкретная состоявшаяся пара (occurrenceId в Schedule): дважды
+   * за одну пару слова не дают, а на следующей неделе тот же семинар
+   * начинается с чистого листа.
+   *
+   * Оценка хранится рядом с фактом выступления, а не только в журнале:
+   * в журнал уходит среднее за модуль, а итогам дня нужно знать, что было
+   * сказано именно сегодня и чем это кончилось.
    */
-  private spokenOccurrences: string[] = []
+  private spokenOccurrences: Record<string, number> = {}
 
   constructor(config: StudyConfig) {
     this.config = config
@@ -60,17 +88,32 @@ export class StudyState {
   }
 
   hasSpokenAt(occurrenceId: string): boolean {
-    return this.spokenOccurrences.includes(occurrenceId)
+    return this.spokenOccurrences[occurrenceId] !== undefined
+  }
+
+  /** Оценка за выступление на этой паре или null, если игрок промолчал. */
+  gradeAt(occurrenceId: string): number | null {
+    return this.spokenOccurrences[occurrenceId] ?? null
+  }
+
+  /** Сколько раз за модуль игрок открывал рот на семинаре. */
+  get spokenCount(): number {
+    return Object.keys(this.spokenOccurrences).length
   }
 
   /**
    * Записывает выступление на конкретной паре: оценка идёт в журнал,
    * а пара помечается — второй раз за неё слова не дают.
+   *
+   * Повторный вызов с той же парой не делает ничего. Защиту обещает сам
+   * метод, поэтому он же обязан её и дать: пометить пару, но всё равно
+   * записать оценку — значит впустить второй балл в среднее за модуль.
+   * Мир до этого не доводит (см. seminarRefusal), но метод, который
+   * держится только на осторожности вызывающего, — это не защита.
    */
   speakAt(occurrenceId: string, courseId: string, grade: number): void {
-    if (!this.spokenOccurrences.includes(occurrenceId)) {
-      this.spokenOccurrences.push(occurrenceId)
-    }
+    if (this.hasSpokenAt(occurrenceId)) return
+    this.spokenOccurrences[occurrenceId] = grade
     this.recordSeminar(courseId, grade)
   }
 
@@ -127,6 +170,40 @@ export class StudyState {
     return this.allStatuses()
       .filter((status) => status.finalGrade !== null && status.finalGrade < PASSING_GRADE)
       .map((status) => status.course.id)
+  }
+
+  toJSON(): StudyStateData {
+    return {
+      grades: this.gradebook.toJSON(),
+      attendance: this.attendance.toJSON(),
+      essays: this.essays.toJSON(),
+      seminarScores: JSON.parse(JSON.stringify(this.seminarScores)) as Record<string, number[]>,
+      spokenOccurrences: { ...this.spokenOccurrences },
+    }
+  }
+
+  /**
+   * Возвращает сохранённое состояние на место.
+   *
+   * Журналы не подменяются, а перезаполняются: мир держит учебное состояние
+   * своим полем, а панели расписания и семинара берут журналы у него
+   * напрямую, — подменённый объект остался бы у них старым.
+   */
+  load(data: StudyStateData): void {
+    this.gradebook.load(data.grades)
+    this.attendance.load(data.attendance)
+    this.essays.load(data.essays)
+    this.seminarScores = JSON.parse(JSON.stringify(data.seminarScores)) as Record<
+      string,
+      number[]
+    >
+    this.spokenOccurrences = { ...data.spokenOccurrences }
+  }
+
+  static fromJSON(config: StudyConfig, data: StudyStateData): StudyState {
+    const state = new StudyState(config)
+    state.load(data)
+    return state
   }
 
   /** Эссе, которые ещё не сданы, отсортированные по близости срока. */

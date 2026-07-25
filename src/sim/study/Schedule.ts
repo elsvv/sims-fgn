@@ -1,3 +1,4 @@
+import { formatClock } from '../time/GameClock'
 import { isStudyDay, weekdayOf } from './Calendar'
 
 /** Длительность пары: два академических часа. */
@@ -9,12 +10,6 @@ export interface Period {
   endMinutes: number
   /** Подпись вида «09:00–10:20». */
   label: string
-}
-
-function formatClock(minutes: number): string {
-  const hh = Math.floor(minutes / 60)
-  const mm = minutes % 60
-  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`
 }
 
 function makePeriod(index: number, startMinutes: number): Period {

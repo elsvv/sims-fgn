@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createAppearance } from './CharacterAppearance'
+import { createAppearance } from './appearance'
 
 describe('внешность персонажа', () => {
   it('имеет разумные значения по умолчанию', () => {

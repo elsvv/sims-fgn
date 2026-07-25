@@ -12,10 +12,13 @@ export interface AttendanceCounts {
   absent: number
 }
 
-interface AttendanceEntry {
+export interface AttendanceEntry {
   courseId: string
   mark: AttendanceMark
 }
+
+/** Журнал целиком: ключ — идентификатор состоявшейся пары. */
+export type AttendanceRecords = Record<string, AttendanceEntry>
 
 /** Насколько опоздание засчитывается в посещаемость. */
 const LATE_CREDIT = 0.5
@@ -34,7 +37,7 @@ export function classifyArrival(period: Period, arrivalMinutes: number): Attenda
  * каждый понедельник заслуживает своей отметки.
  */
 export class AttendanceLog {
-  private entries: Record<string, AttendanceEntry> = {}
+  private entries: AttendanceRecords = {}
 
   mark(occurrenceId: string, courseId: string, mark: AttendanceMark): void {
     this.entries[occurrenceId] = { courseId, mark }
@@ -65,13 +68,18 @@ export class AttendanceLog {
     return (present + late * LATE_CREDIT) / total * MAX_GRADE
   }
 
-  toJSON(): Record<string, AttendanceEntry> {
-    return JSON.parse(JSON.stringify(this.entries)) as Record<string, AttendanceEntry>
+  toJSON(): AttendanceRecords {
+    return JSON.parse(JSON.stringify(this.entries)) as AttendanceRecords
   }
 
-  static fromJSON(entries: Record<string, AttendanceEntry>): AttendanceLog {
+  /** Возвращает состояние на место, в уже существующий журнал. */
+  load(entries: AttendanceRecords): void {
+    this.entries = JSON.parse(JSON.stringify(entries)) as AttendanceRecords
+  }
+
+  static fromJSON(entries: AttendanceRecords): AttendanceLog {
     const log = new AttendanceLog()
-    log.entries = JSON.parse(JSON.stringify(entries)) as Record<string, AttendanceEntry>
+    log.load(entries)
     return log
   }
 }

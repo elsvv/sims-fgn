@@ -19,6 +19,16 @@ import type { DialogueRequirement } from './Dialogue'
 export interface RequirementLabels {
   /** Названия книг по идентификаторам: «phaedo» → «Платон. „Федон“». */
   books?: Readonly<Record<string, string>>
+  /**
+   * Подписи модификаторов настроения: «praised» → «Похвалил Михайловский».
+   * Те же самые, что игрок видит в панели настроения.
+   */
+  moodlets?: Readonly<Record<string, string>>
+  /**
+   * Чем был прошлый разговор — глаголом, как его вспоминают:
+   * «marey-restroom-opening» → «поговорить с Мареем у раковины».
+   */
+  conversations?: Readonly<Record<string, string>>
 }
 
 const FACTION_UP = 'нужно быть ближе к континентальной традиции'
@@ -26,6 +36,9 @@ const FACTION_DOWN = 'нужно быть ближе к аналитическо
 const RESPECT = 'нужно, чтобы вас ценили больше'
 const AFFECTION = 'нужно, чтобы к вам лучше относились'
 const BOOK = 'нужно прочитать книгу'
+const MOODLET = 'нужно подходящее настроение'
+const WITHOUT_MOODLET = 'мешает нынешнее настроение'
+const VISITED = 'нужен разговор, которого у вас ещё не было'
 
 /**
  * Отдельные части требования словами, по порядку.
@@ -51,6 +64,18 @@ export function requirementParts(
   if (requirement.book !== undefined) {
     const title = labels.books?.[requirement.book]
     parts.push(title ? `нужно прочитать ${title}` : BOOK)
+  }
+  if (requirement.moodletId !== undefined) {
+    const label = labels.moodlets?.[requirement.moodletId]
+    parts.push(label ? `нужно, чтобы ещё держалось «${label}»` : MOODLET)
+  }
+  if (requirement.withoutMoodletId !== undefined) {
+    const label = labels.moodlets?.[requirement.withoutMoodletId]
+    parts.push(label ? `мешает «${label}»` : WITHOUT_MOODLET)
+  }
+  if (requirement.visitedNode !== undefined) {
+    const memory = labels.conversations?.[requirement.visitedNode]
+    parts.push(memory ? `нужно было раньше ${memory}` : VISITED)
   }
 
   return parts

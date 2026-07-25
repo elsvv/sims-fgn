@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { CharacterAppearance } from '../../render/character/CharacterAppearance'
+import type { CharacterAppearance } from '../../shared/appearance'
 import { NavGrid } from '../../sim/world/NavGrid'
 import { roomCells } from '../../sim/npc/Npc'
 import { FLOOR_A2 } from '../floors/floorA2'

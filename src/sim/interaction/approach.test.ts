@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import type { FloorPlan } from '../world/FloorPlan'
 import { NavGrid } from '../world/NavGrid'
-import { findAdjacentCell, findApproachCell } from './approach'
+import {
+  findAdjacentCell,
+  findApproachCell,
+  isWithinTalkRange,
+  TALK_RANGE_METRES,
+} from './approach'
 
 function makeGrid(tiles: string[], props: FloorPlan['props'] = []): NavGrid {
   return new NavGrid({
@@ -58,5 +63,43 @@ describe('findAdjacentCell', () => {
   it('без единой подходящей соседки берёт любую проходимую', () => {
     const grid = makeGrid(['.....', '.....', '.....'])
     expect(findAdjacentCell(grid, { col: 2, row: 1 }, () => false)).not.toBeNull()
+  })
+})
+
+describe('isWithinTalkRange', () => {
+  const HERE = { x: 0, z: 0 }
+
+  it('стоящие вплотную разговаривают', () => {
+    expect(isWithinTalkRange(HERE, { x: 1, z: 0 })).toBe(true)
+  })
+
+  it('через весь коридор — нет', () => {
+    expect(isWithinTalkRange(HERE, { x: 13, z: 0 })).toBe(false)
+  })
+
+  it('считает расстояние по прямой, а не по осям', () => {
+    // По сумме осей это четыре метра, по прямой — меньше трёх.
+    expect(isWithinTalkRange(HERE, { x: 2, z: 2 })).toBe(true)
+    expect(isWithinTalkRange(HERE, { x: 3, z: 3 })).toBe(false)
+  })
+
+  it('ровно на границе разговор ещё возможен', () => {
+    expect(isWithinTalkRange(HERE, { x: TALK_RANGE_METRES, z: 0 })).toBe(true)
+    expect(isWithinTalkRange(HERE, { x: TALK_RANGE_METRES + 0.01, z: 0 })).toBe(false)
+  })
+
+  it('порядок собеседников ничего не меняет', () => {
+    const there = { x: 2.5, z: -1 }
+    expect(isWithinTalkRange(HERE, there)).toBe(isWithinTalkRange(there, HERE))
+  })
+
+  it('принимает свою мерку, если она нужна', () => {
+    expect(isWithinTalkRange(HERE, { x: 5, z: 0 }, 6)).toBe(true)
+    expect(isWithinTalkRange(HERE, { x: 5, z: 0 }, 4)).toBe(false)
+  })
+
+  it('порог не позволяет разговаривать через весь этаж', () => {
+    expect(TALK_RANGE_METRES).toBeGreaterThanOrEqual(2)
+    expect(TALK_RANGE_METRES).toBeLessThanOrEqual(3)
   })
 })

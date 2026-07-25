@@ -63,4 +63,23 @@ describe('RelationshipMap', () => {
     const restored = RelationshipMap.fromJSON(JSON.parse(JSON.stringify(map.toJSON())))
     expect(restored.get('alieva').respect).toBe(40)
   })
+
+  it('загрузка заменяет прежние отношения, а не добавляется к ним', () => {
+    // Мир загружает сохранение в существующую карту: отношения, нажитые
+    // после сохранения, обязаны исчезнуть вместе с остальным.
+    const map = new RelationshipMap()
+    map.adjust('marey', { respect: 30 })
+    map.adjust('alieva', { affection: 20 })
+
+    map.load({ marey: { affection: 0, respect: 5 } })
+    expect(map.get('marey')).toEqual({ affection: 0, respect: 5 })
+    expect(map.get('alieva')).toEqual({ affection: 0, respect: 0 })
+  })
+
+  it('загруженная карта не связана с исходными данными', () => {
+    const data = { marey: { affection: 1, respect: 2 } }
+    const map = RelationshipMap.fromJSON(data)
+    map.adjust('marey', { respect: 10 })
+    expect(data.marey.respect).toBe(2)
+  })
 })
