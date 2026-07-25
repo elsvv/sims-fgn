@@ -9,9 +9,15 @@ import type { Teacher, TeacherCatalog } from './social/Teacher'
 import type { AttendanceMark } from './study/Attendance'
 import type { CourseCatalog } from './study/Course'
 import { roundGrade } from './study/Gradebook'
-import { occurrenceId, PERIODS, type Schedule } from './study/Schedule'
+import {
+  occurrenceId,
+  PERIODS,
+  validateSchedule,
+  type Schedule,
+} from './study/Schedule'
 import type { SeminarOption } from './study/Seminar'
 import { StudyState } from './study/StudyState'
+import { MINUTES_PER_DAY } from './time/GameClock'
 import { World } from './World'
 import type { FloorPlan } from './world/FloorPlan'
 import type { PropCatalog } from './world/PropDefinition'
@@ -2019,14 +2025,37 @@ describe('World: право выступить на семинаре', () => {
     })
   })
 
-  it('на лекции не выступают', () => {
+  /*
+   * Живая игра, пункт 3 списка проблем: «первый семинар у Алиевой прошёл
+   * нормально, на следующем занятии выступить уже не получилось». Следующим
+   * занятием была лекция — и молчала об этом вся игра сразу: панель на
+   * лекции исчезала целиком, а команда отвечала общим «сейчас не семинар»,
+   * тем же самым, что и в пустом коридоре в полночь.
+   */
+  it('на лекции игра называет причину, а не отмалчивается', () => {
     const world = makeSeminarWorld(IN_LECTURE_ROOM)
     runUntil(world, PERIODS[1]!.startMinutes + 5)
     expect(markOf(world, 'histphil-mon')).toBe('present')
     expect(world.commandSpeakAtSeminar('retell')).toEqual({
       ok: false,
+      reason: 'Идёт лекция: здесь слушают, а выступают на семинарах',
+    })
+
+    // Панель на лекции остаётся и объясняет, почему выступать не с чем.
+    const seminar = world.snapshot().seminar
+    expect(seminar?.kind).toBe('lecture')
+    expect(seminar?.canSpeak).toBe(false)
+    expect(seminar?.reason).toContain('лекция')
+    expect(seminar?.courseId).toBe('histphil')
+  })
+
+  it('вне пары причина другая: сидеть не на чем', () => {
+    const world = makeSeminarWorld(IN_CORRIDOR)
+    expect(world.commandSpeakAtSeminar('retell')).toEqual({
+      ok: false,
       reason: 'Сейчас не семинар',
     })
+    expect(world.snapshot().seminar).toBeNull()
   })
 
   it('дважды за одну пару слова не дают', () => {
@@ -2034,7 +2063,7 @@ describe('World: право выступить на семинаре', () => {
     expect(world.commandSpeakAtSeminar('retell').ok).toBe(true)
     expect(world.commandSpeakAtSeminar('retell')).toEqual({
       ok: false,
-      reason: 'Вы уже выступали',
+      reason: 'Вы уже выступали — слово дают раз за пару',
     })
   })
 
@@ -2196,7 +2225,7 @@ describe('World: семинар в снимке состояния', () => {
 
     const snapshot = world.snapshot()
     expect(snapshot.canSpeakAtSeminar).toBe(false)
-    expect(snapshot.seminar?.reason).toBe('Вы уже выступали')
+    expect(snapshot.seminar?.reason).toBe('Вы уже выступали — слово дают раз за пару')
     expect(snapshot.seminar?.speech?.optionId).toBe('retell')
     expect(snapshot.seminar?.speech?.reply).not.toBeNull()
   })
@@ -2265,7 +2294,100 @@ describe('World: тот же семинар неделей позже', () => {
     expect(world.commandSpeakAtSeminar('retell').ok).toBe(true)
     expect(world.commandSpeakAtSeminar('retell')).toEqual({
       ok: false,
-      reason: 'Вы уже выступали',
+      reason: 'Вы уже выступали — слово дают раз за пару',
     })
+  })
+})
+
+/**
+ * Два занятия одного курса на одной неделе, в разные дни.
+ *
+ * Первым делом это сторож занятой личности пары. «Уже выступал» помечает
+ * конкретное проведение — день плюс слот расписания, — и ключ обязан
+ * различать понедельничный греческий и средовый. Свести их в один
+ * (по курсу, по преподавателю, по слоту расписания) значит отдать игроку
+ * одно слово за весь модуль: первое выступление закрыло бы все остальные.
+ *
+ * Второе — сторож обратной ошибки: пара не должна давать слово дважды,
+ * иначе среднее за модуль накручивается на одном и том же семинаре.
+ */
+const TWO_DAY_SCHEDULE: Schedule = [
+  { id: 'greek-mon', courseId: 'greek', kind: 'seminar', weekday: 0, period: 0, room: 'А-204' },
+  { id: 'greek-wed', courseId: 'greek', kind: 'seminar', weekday: 2, period: 0, room: 'А-204' },
+]
+
+function makeTwoDayWorld(): World {
+  const study = new StudyState({
+    courses: SEMINAR_COURSES,
+    schedule: TWO_DAY_SCHEDULE,
+    essays: [],
+    seminarOptions: SEMINAR_OPTIONS,
+  })
+  const world = new World(STUDY_PLAN, IN_CLASS, {}, study, SEMINAR_MOODLETS, SEMINAR_NPCS, {
+    teachers: SEMINAR_TEACHERS,
+    dialogues: {},
+  })
+  world.skills = createSkills({ ancientLanguages: 9, eloquence: 9, endurance: 9 })
+  world.faction = 85
+  return world
+}
+
+/** Прокручивает время до указанной минуты указанного дня. */
+function runUntilDay(world: World, day: number, minutes: number): void {
+  world.clock.speed = 3
+  const target = day * MINUTES_PER_DAY + minutes
+  for (let i = 0; i < 200000 && world.clock.totalMinutes < target; i++) {
+    world.tick(0.25)
+    passDayScreens(world)
+  }
+  expect(world.clock.time.day).toBe(day)
+  expect(world.clock.time.minutes).toBeGreaterThanOrEqual(minutes)
+}
+
+describe('World: два занятия одного курса в разные дни', () => {
+  it('выступить можно на каждом, и ровно по одному разу', () => {
+    const world = makeTwoDayWorld()
+
+    runUntilDay(world, 0, FIRST.startMinutes + 5)
+    expect(world.snapshot().seminar?.lessonId).toBe('greek-mon')
+    const monday = world.commandSpeakAtSeminar('retell')
+    expect(monday.ok).toBe(true)
+    expect(world.commandSpeakAtSeminar('retell')).toEqual({
+      ok: false,
+      reason: 'Вы уже выступали — слово дают раз за пару',
+    })
+
+    runUntilDay(world, 2, FIRST.startMinutes + 5)
+    expect(world.snapshot().seminar?.lessonId).toBe('greek-wed')
+    // Понедельничное выступление не тащится в среду ни ответом, ни запретом.
+    expect(world.snapshot().seminar?.speech).toBeNull()
+    expect(world.snapshot().canSpeakAtSeminar).toBe(true)
+
+    const wednesday = world.commandSpeakAtSeminar('retell')
+    expect(wednesday.ok).toBe(true)
+    expect(world.commandSpeakAtSeminar('retell')).toEqual({
+      ok: false,
+      reason: 'Вы уже выступали — слово дают раз за пару',
+    })
+
+    if (!monday.ok || !wednesday.ok) return
+    // Два разных проведения, две записи в журнале — и среднее из двух.
+    expect(monday.speech.occurrenceId).not.toBe(wednesday.speech.occurrenceId)
+    expect(world.study?.spokenCount).toBe(2)
+    expect(world.study?.gradebook.gradeFor('greek', 'seminars')).toBe(
+      roundGrade((monday.speech.grade + wednesday.speech.grade) / 2),
+    )
+  })
+
+  it('повторённый идентификатор занятия ловится проверкой расписания', () => {
+    // Именно из id собирается ключ проведения. Два занятия с одним id в один
+    // день слиплись бы в одно: отметка о присутствии на первом закрывала бы
+    // второе, а выступление на первом отнимало бы слово на втором.
+    const clash: Schedule = [
+      ...TWO_DAY_SCHEDULE,
+      { id: 'greek-mon', courseId: 'greek', kind: 'seminar', weekday: 0, period: 2, room: 'А-204' },
+    ]
+    expect(validateSchedule(clash).join(' ')).toContain('повторяется')
+    expect(validateSchedule(TWO_DAY_SCHEDULE)).toEqual([])
   })
 })

@@ -69,10 +69,19 @@ export function occurrenceId(day: number, lessonId: string): string {
   return `${day}:${lessonId}`
 }
 
-/** Возвращает список ошибок расписания. Пустой список означает, что оно корректно. */
+/**
+ * Возвращает список ошибок расписания. Пустой список означает, что оно корректно.
+ *
+ * Повторённый идентификатор проверяется наравне с накладкой по времени,
+ * и это не занудство: из него собирается occurrenceId, а значит два занятия
+ * с одним id в один день — это одна пара в журналах. Отметка о присутствии
+ * на первом закрывала бы второе, а выступление на первом отнимало бы слово
+ * на втором. Опечатка в данных не должна выглядеть как поломка механики.
+ */
 export function validateSchedule(schedule: Schedule): string[] {
   const errors: string[] = []
   const occupied = new Map<string, string>()
+  const ids = new Set<string>()
 
   for (const lesson of schedule) {
     if (lesson.weekday === 6) {
@@ -80,6 +89,12 @@ export function validateSchedule(schedule: Schedule): string[] {
     }
     if (!periodOf(lesson.period)) {
       errors.push(`Занятие ${lesson.id} ссылается на несуществующую пару ${lesson.period}`)
+    }
+
+    if (ids.has(lesson.id)) {
+      errors.push(`Идентификатор занятия ${lesson.id} повторяется`)
+    } else {
+      ids.add(lesson.id)
     }
 
     const slot = `${lesson.weekday}:${lesson.period}`

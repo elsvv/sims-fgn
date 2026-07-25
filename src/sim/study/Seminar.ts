@@ -283,18 +283,29 @@ export function performSpeech(context: SeminarContext): SeminarResult {
 
 export type SeminarRefusal =
   | 'notSeminar'
+  | 'lecture'
   | 'wrongRoom'
   | 'notMarked'
   | 'alreadySpoke'
   | 'unknownOption'
   | 'lockedOption'
 
-/** Почему выступить нельзя — теми словами, которые увидит игрок. */
+/**
+ * Почему выступить нельзя — теми словами, которые увидит игрок.
+ *
+ * Лекция вынесена из общего «сейчас не семинар» отдельной причиной, и это
+ * не косметика. Первокурсник, у которого только что получилось выступить
+ * у Алиевой, идёт на следующую пару и не находит там кнопки. Молчание
+ * в этом месте читается как поломка, а не как правило: человек видел, что
+ * механика работает, а теперь её нет. Названная причина превращает
+ * пропажу кнопки в устройство мира — на лекции слушают.
+ */
 export const SEMINAR_REFUSALS: Record<SeminarRefusal, string> = {
   notSeminar: 'Сейчас не семинар',
+  lecture: 'Идёт лекция: здесь слушают, а выступают на семинарах',
   wrongRoom: 'Вы не в той аудитории',
   notMarked: 'Вас ещё не отметили на паре',
-  alreadySpoke: 'Вы уже выступали',
+  alreadySpoke: 'Вы уже выступали — слово дают раз за пару',
   unknownOption: 'Такого выступления нет',
   lockedOption: 'Для этого не хватает подготовки',
 }
@@ -313,16 +324,17 @@ export interface SeminarSituation {
 /**
  * Что мешает выступить прямо сейчас. null — ничто не мешает.
  *
- * Порядок проверок — порядок полезности ответа: сначала «не семинар»,
- * потом «не в той аудитории», и только потом бумажные причины. Отметка
- * о присутствии обязательна не ради бюрократии: она ставится по факту
- * того, что персонаж дошёл до аудитории, пока пара идёт. Выступать,
- * не придя, нельзя, и это то же правило, что и в жизни.
+ * Порядок проверок — порядок полезности ответа: сначала «пары нет», потом
+ * «это лекция», потом «не в той аудитории», и только потом бумажные
+ * причины. Отметка о присутствии обязательна не ради бюрократии: она
+ * ставится по факту того, что персонаж дошёл до аудитории, пока пара идёт.
+ * Выступать, не придя, нельзя, и это то же правило, что и в жизни.
  */
 export function seminarRefusal(situation: SeminarSituation): SeminarRefusal | null {
   const { lesson, room, mark, alreadySpoke } = situation
 
-  if (!lesson || lesson.kind !== 'seminar') return 'notSeminar'
+  if (!lesson) return 'notSeminar'
+  if (lesson.kind !== 'seminar') return 'lecture'
   if (room === null || room !== lesson.room) return 'wrongRoom'
   if (mark === null || mark === 'absent') return 'notMarked'
   if (alreadySpoke) return 'alreadySpoke'

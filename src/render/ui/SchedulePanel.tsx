@@ -55,7 +55,13 @@ export function SchedulePanel() {
               <div className="lesson__time">{periodOf(lesson.period)?.label ?? ''}</div>
               <div className="lesson__body">
                 <div className="lesson__course">{course?.short ?? lesson.courseId}</div>
-                <div className="lesson__room">{lesson.room}</div>
+                {/* Вид пары стоит рядом с аудиторией, а не в подсказке при
+                    наведении: выступают только на семинарах, и решать,
+                    куда идти, игрок должен читая расписание, а не проверяя
+                    каждую пару собой. */}
+                <div className="lesson__room">
+                  {KIND_LABELS[lesson.kind]}, {lesson.room}
+                </div>
               </div>
               {mark && <div className={`lesson__mark lesson__mark--${mark}`}>{MARK_LABELS[mark]}</div>}
             </div>

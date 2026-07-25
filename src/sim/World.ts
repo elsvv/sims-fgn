@@ -317,11 +317,21 @@ export interface SeminarSpeechInfo {
   reply: string | null
 }
 
-/** Семинар, на котором игрок сидит прямо сейчас. */
+/**
+ * Пара, на которой игрок сидит прямо сейчас.
+ *
+ * Панель одна на лекцию и на семинар нарочно. Пропасть без единого слова
+ * она не имеет права: игрок, у которого выступление только что сработало,
+ * приходит на следующую пару и не находит кнопки, — и это читается как
+ * поломка, а не как «здесь читают лекцию». Поэтому на лекции панель
+ * остаётся и говорит, почему выступать не с чем.
+ */
 export interface SeminarInfo {
   courseId: string
   /** Слот расписания: «greek-mon». Конкретный день лежит в speech.occurrenceId. */
   lessonId: string
+  /** Лекция это или семинар: панель подписывается по-разному. */
+  kind: Lesson['kind']
   teacherId: string | null
   /** Можно ли выступить прямо сейчас. */
   canSpeak: boolean
@@ -1402,12 +1412,14 @@ export class World {
    * своими словами.
    *
    * Отказ возвращается с причиной, а не молча: игрок должен понимать,
-   * почему кнопка не сработала, — «Сейчас не семинар», «Вы не в той
-   * аудитории», «Вы уже выступали».
+   * почему кнопка не сработала, — «Идёт лекция», «Вы не в той аудитории»,
+   * «Вы уже выступали». Решает про отказ идущая пара любого вида, а не
+   * только семинар: иначе лекция и пустой коридор отвечали бы одинаково,
+   * а это два разных ответа на вопрос «почему нельзя».
    */
   commandSpeakAtSeminar(optionId: string): SeminarOutcome {
     const study = this.study
-    const lesson = this.currentSeminarLesson()
+    const lesson = this.currentLesson()
     const block = this.seminarBlock(lesson)
     if (block !== null || !study || !lesson) {
       return { ok: false, reason: SEMINAR_REFUSALS[block ?? 'notSeminar'] }
@@ -1460,12 +1472,11 @@ export class World {
     this.lastSpeech = null
   }
 
-  /** Семинар, идущий прямо сейчас, или null. Лекция сюда не попадает. */
-  private currentSeminarLesson(): Lesson | null {
+  /** Пара, идущая прямо сейчас, любого вида, или null. */
+  private currentLesson(): Lesson | null {
     if (!this.study) return null
     const { day, minutes } = this.clock.time
-    const lesson = lessonAt(this.study.config.schedule, day, minutes)
-    return lesson && lesson.kind === 'seminar' ? lesson : null
+    return lessonAt(this.study.config.schedule, day, minutes)
   }
 
   /** Что мешает выступить прямо сейчас. null — ничто не мешает. */
@@ -1752,15 +1763,18 @@ export class World {
   }
 
   /**
-   * Семинар для интерфейса.
+   * Идущая пара для интерфейса.
    *
-   * Панель появляется, только когда игрок сидит на семинаре: в коридоре
-   * под дверью выступать не с чем, а лишняя панель в углу экрана
-   * превращается в мебель, которую перестают читать.
+   * Панель появляется, когда игрок сидит в аудитории на своей паре, —
+   * и на семинаре, и на лекции. В коридоре под дверью её нет: выступать
+   * там не с чем, а лишняя панель в углу экрана превращается в мебель,
+   * которую перестают читать. А вот на лекции она нужна: без неё игрок,
+   * у которого выступление сработало на прошлой паре, видит на этой
+   * пустое место и не знает, сломалась игра или так задумано.
    */
   private seminarInfo(): SeminarInfo | null {
     const study = this.study
-    const lesson = this.currentSeminarLesson()
+    const lesson = this.currentLesson()
     if (!study || !lesson || this.currentRoom !== lesson.room) return null
 
     const teacher = this.teacherOfCourse(lesson.courseId)
@@ -1770,6 +1784,7 @@ export class World {
     return {
       courseId: lesson.courseId,
       lessonId: lesson.id,
+      kind: lesson.kind,
       teacherId: teacher?.id ?? null,
       canSpeak: block === null,
       reason: block === null ? null : SEMINAR_REFUSALS[block],
