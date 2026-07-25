@@ -170,8 +170,19 @@ export class RelationshipMap {
     return relationshipLevel(this.get(npcId))
   }
 
-  describeFor(npcId: string): string {
-    return LEVEL_LABELS[this.levelOf(npcId)]
+  /**
+   * Уровень отношений словом.
+   *
+   * @param met разговор между вами уже был. Нужен ради одной строчки:
+   * человек, с которым только что поговорили без последствий, стоял
+   * в списке подписанный «Незнакомы» — рядом с фразой «Поговорили,
+   * и только». Формально верно (ни уважения, ни симпатии за это
+   * не начислили), а читается противоречием.
+   */
+  describeFor(npcId: string, met = false): string {
+    const level = this.levelOf(npcId)
+    if (met && level === 'stranger') return 'Едва знакомы'
+    return LEVEL_LABELS[level]
   }
 
   toJSON(): RelationshipRecords {

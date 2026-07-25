@@ -64,6 +64,20 @@ describe('RelationshipMap', () => {
     expect(map.describeFor('marey')).toBe('Близкие отношения')
   })
 
+  it('после разговора без последствий не называет собеседника незнакомым', () => {
+    // Строчка «Незнакомы» стояла рядом с фразой «Поговорили, и только»:
+    // формально верно — ни уважения, ни симпатии за такой ответ
+    // не начислили, — а читается противоречием.
+    const map = new RelationshipMap()
+    expect(map.describeFor('marey', true)).toBe('Едва знакомы')
+  })
+
+  it('на людей, с которыми что-то было, знакомство не влияет', () => {
+    const map = new RelationshipMap()
+    map.adjust('marey', { affection: 80, respect: 70 })
+    expect(map.describeFor('marey', true)).toBe('Близкие отношения')
+  })
+
   it('переживает сохранение и загрузку', () => {
     const map = new RelationshipMap()
     map.adjust('alieva', { respect: 40 })

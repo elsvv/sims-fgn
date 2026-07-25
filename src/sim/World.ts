@@ -1979,7 +1979,7 @@ export class World {
         teacherId: npc.teacherId,
         affection,
         respect,
-        label: this.relationships.describeFor(npc.id),
+        label: this.relationships.describeFor(npc.id, met.has(npc.id)),
         met: met.has(npc.id),
       }
     })

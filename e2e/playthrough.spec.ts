@@ -279,6 +279,9 @@ test('подошёл — заговорил: второго нажатия не 
   const met = people.locator('.person', { hasText: 'Михайловский' })
   await expect(met).toHaveCount(1)
   await expect(met.locator('.person__standing-text')).toHaveText('Поговорили, и только')
+  // И не «Незнакомы» рядом с этой фразой: формально верно, читается
+  // противоречием.
+  await expect(met.locator('.person__level')).toHaveText('Едва знакомы')
   // Числами в этой панели по-прежнему не разговаривают.
   expect(await met.innerText(), 'в списке людей появилось число').not.toMatch(/\d/)
 
