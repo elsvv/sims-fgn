@@ -33,6 +33,12 @@ export function isMoving(actor: Actor): boolean {
   return actor.pathIndex < actor.path.length
 }
 
+/** Обрывает путь: актор остаётся там, где стоит. */
+export function stopActor(actor: Actor): void {
+  actor.path = []
+  actor.pathIndex = 0
+}
+
 /**
  * Прокладывает путь к целевой клетке.
  * Возвращает false, если идти некуда — путь не найден либо актор уже на месте.
@@ -41,8 +47,7 @@ export function setDestination(actor: Actor, grid: NavGrid, target: GridPos): bo
   const from = grid.worldToGrid(actor.position)
   const path = findPath(grid, from, target)
   if (!path) {
-    actor.path = []
-    actor.pathIndex = 0
+    stopActor(actor)
     return false
   }
 
@@ -88,8 +93,5 @@ export function stepActor(actor: Actor, grid: NavGrid, scaledSeconds: number): v
     }
   }
 
-  if (!isMoving(actor)) {
-    actor.path = []
-    actor.pathIndex = 0
-  }
+  if (!isMoving(actor)) stopActor(actor)
 }

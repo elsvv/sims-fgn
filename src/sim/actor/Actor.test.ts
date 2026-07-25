@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { FloorPlan } from '../world/FloorPlan'
 import { NavGrid } from '../world/NavGrid'
-import { createActor, isMoving, setDestination, stepActor } from './Actor'
+import { createActor, isMoving, setDestination, stepActor, stopActor } from './Actor'
 
 function makeGrid(): NavGrid {
   const plan: FloorPlan = {
@@ -75,5 +75,39 @@ describe('Actor', () => {
     setDestination(actor, grid, { col: 0, row: 2 })
     stepActor(actor, grid, 0.2)
     expect(actor.facing).toBeCloseTo(Math.PI / 2, 3)
+  })
+})
+
+describe('stopActor', () => {
+  it('обрывает путь на середине', () => {
+    const grid = makeGrid()
+    const actor = createActor('a', grid.gridToWorld({ col: 0, row: 0 }))
+    setDestination(actor, grid, { col: 4, row: 0 })
+    expect(isMoving(actor)).toBe(true)
+
+    const where = { ...actor.position }
+    stopActor(actor)
+    expect(isMoving(actor)).toBe(false)
+    expect(actor.path).toEqual([])
+    expect(actor.position).toEqual(where)
+  })
+
+  it('на стоящем акторе ничего не ломает', () => {
+    const grid = makeGrid()
+    const actor = createActor('a', grid.gridToWorld({ col: 0, row: 0 }))
+    stopActor(actor)
+    stopActor(actor)
+    expect(isMoving(actor)).toBe(false)
+  })
+
+  it('остановленный актор больше никуда не идёт сам', () => {
+    const grid = makeGrid()
+    const actor = createActor('a', grid.gridToWorld({ col: 0, row: 0 }))
+    setDestination(actor, grid, { col: 4, row: 0 })
+    stopActor(actor)
+
+    const where = { ...actor.position }
+    stepActor(actor, grid, 5)
+    expect(actor.position).toEqual(where)
   })
 })
