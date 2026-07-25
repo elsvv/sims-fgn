@@ -8,6 +8,7 @@ import { TEACHERS } from '../../content/people/teachers'
 import { isMoving } from '../../sim/actor/Actor'
 import type { Npc } from '../../sim/npc/Npc'
 import type { World } from '../../sim/World'
+import { dragAwareClick } from '../input/sceneClicks'
 import { useWorld } from '../useWorld'
 import { ProceduralCharacter } from './ProceduralCharacter'
 
@@ -83,6 +84,7 @@ function NpcCharacter({ npc }: { npc: Npc }) {
 
   // Клик по человеку не должен заодно уходить в пол под ним: иначе
   // персонаж одновременно и заговорит, и пойдёт в другую сторону.
+  // Вращение камеры, закончившееся над собеседником, разговором не считается.
   function handleClick(event: ThreeEvent<MouseEvent>) {
     event.stopPropagation()
     talkTo(world, npc)
@@ -100,7 +102,7 @@ function NpcCharacter({ npc }: { npc: Npc }) {
   })
 
   return (
-    <group ref={group} onClick={handleClick}>
+    <group ref={group} onClick={dragAwareClick(handleClick)}>
       <ProceduralCharacter appearance={appearance} walking={walking} />
       {label && (
         <Html

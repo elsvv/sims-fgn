@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { GameCanvas } from './GameCanvas'
+import { usePointerGestures } from './input/sceneClicks'
 import { ConversationPanel } from './ui/ConversationPanel'
 import { DayScreen } from './ui/DayScreen'
 import { DialoguePanel } from './ui/DialoguePanel'
@@ -63,6 +64,10 @@ function Hud({
 
 export function App() {
   const [selectedProp, setSelectedProp] = useState<string | null>(null)
+
+  // Наблюдение за мышью ставится на всё окно и живёт, пока живёт игра:
+  // без него клики по сцене не отличить от вращения камеры.
+  usePointerGestures()
 
   return (
     <WorldProvider>

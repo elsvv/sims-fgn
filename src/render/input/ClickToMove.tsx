@@ -1,5 +1,6 @@
 import type { ThreeEvent } from '@react-three/fiber'
 import { useWorld } from '../useWorld'
+import { dragAwareClick } from './sceneClicks'
 
 /**
  * Прозрачная плоскость на уровне пола. Ловит клики, переводит точку попадания
@@ -8,6 +9,10 @@ import { useWorld } from '../useWorld'
  *
  * Плоскость прозрачна через материал, а не через visible={false}:
  * невидимые объекты three.js исключает из проверки пересечений.
+ *
+ * Пол занимает весь экран, поэтому вращение камеры заканчивается почти
+ * всегда над ним: без dragAwareClick любой поворот вида уводил бы персонажа
+ * идти в случайную точку.
  */
 export function ClickToMove() {
   const world = useWorld()
@@ -23,7 +28,7 @@ export function ClickToMove() {
     <mesh
       position={[width / 2, 0.02, depth / 2]}
       rotation={[-Math.PI / 2, 0, 0]}
-      onClick={handleClick}
+      onClick={dragAwareClick(handleClick)}
     >
       <planeGeometry args={[width, depth]} />
       <meshBasicMaterial transparent opacity={0} depthWrite={false} />

@@ -5,7 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Симс ФГН</title>
     <style>
-      html, body, #root { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; }
+      /*
+        Страница не прокручивается и не «отскакивает»: overflow скрыт, чтобы
+        колесо мыши доставалось камере, а не странице, а overscroll-behavior
+        отключает жесты за краем прокрутки — двухпальцевый свайп на тачпаде
+        иначе уводит браузер на предыдущую страницу прямо посреди игры.
+      */
+      html, body, #root {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        overscroll-behavior: none;
+      }
       body { background: #14161b; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
     </style>
   </head>

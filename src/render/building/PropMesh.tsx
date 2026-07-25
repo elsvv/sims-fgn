@@ -1,5 +1,7 @@
+import type { ThreeEvent } from '@react-three/fiber'
 import type { PropPlacement } from '../../sim/world/FloorPlan'
 import type { PropCatalog } from '../../sim/world/PropDefinition'
+import { dragAwareClick } from '../input/sceneClicks'
 
 export const WALL_HEIGHT = 3
 
@@ -21,16 +23,20 @@ export function PropMesh({
   const z = (placement.row + 0.5) * cellSize
   const { w, d, h } = definition.size
 
+  // Меню предмета открывается только по настоящему клику: вращая камеру,
+  // легко отпустить кнопку над столом, и меню лезло бы само собой.
+  function handleClick(event: ThreeEvent<MouseEvent>) {
+    event.stopPropagation()
+    onSelect(placement.id)
+  }
+
   return (
     <mesh
       position={[x, h / 2, z]}
       rotation={[0, placement.rotation, 0]}
       castShadow
       receiveShadow
-      onClick={(event) => {
-        event.stopPropagation()
-        onSelect(placement.id)
-      }}
+      onClick={dragAwareClick(handleClick)}
       onPointerOver={(event) => {
         event.stopPropagation()
         document.body.style.cursor = 'pointer'
