@@ -12,6 +12,11 @@ import type { PropCatalog } from '../../sim/world/PropDefinition'
  * соседнюю клетку, по которой персонаж всё равно спокойно пройдёт.
  * Правило сторожит тест в src/content/floors/floorA2.test.ts.
  * Высота ничем не ограничена: вверх ходить нельзя.
+ *
+ * Поле moodletId связывает действие с каталогом модификаторов настроения
+ * (src/content/moodlets.ts): ожидание лифта оставляет раздражение на час,
+ * кофе — бодрость на два. Нужды отвечают за физиологию, модификатор — за то,
+ * что персонаж об этом думает. Ссылки сторожит src/content/moodlets.test.ts.
  */
 export const PROP_CATALOG: PropCatalog = {
   desk: {
@@ -77,6 +82,7 @@ export const PROP_CATALOG: PropCatalog = {
         label: 'Взять шоколадку',
         durationMinutes: 3,
         needDelta: { hunger: 20, fun: 6 },
+        moodletId: 'lunchFromVendingMachine',
       },
     ],
   },
@@ -92,6 +98,7 @@ export const PROP_CATALOG: PropCatalog = {
         label: 'Взять кофе',
         durationMinutes: 6,
         needDelta: { energy: 28, hunger: 6, bladder: -12 },
+        moodletId: 'vendingCoffee',
       },
     ],
   },
@@ -158,6 +165,7 @@ export const PROP_CATALOG: PropCatalog = {
         label: 'Ждать лифт',
         durationMinutes: 9,
         needDelta: { stress: 12, fun: -8 },
+        moodletId: 'waitedForElevator',
       },
     ],
   },
@@ -173,6 +181,7 @@ export const PROP_CATALOG: PropCatalog = {
         label: 'Пойти пешком',
         durationMinutes: 3,
         needDelta: { energy: -8, stress: -4 },
+        moodletId: 'tookTheStairs',
       },
     ],
   },
